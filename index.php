@@ -501,11 +501,22 @@ function hasLOS(x0,y0,x1,y1){
 // ── Players ────────────────────────────────────────
 function mkLocal(sx,sy){
   const hp=calcMaxHP(),ar=calcArmor();
-  const weps=[mkWep('pistol')];
-  if(hasStarterGear()){const s=mkWep('smg');s.reserve+=50;weps.push(s);}
+  let weps,widx=0;
+  // Load stashed weapons from last successful extraction
+  if(prof.stashedWeapons&&prof.stashedWeapons.length>0){
+    weps=prof.stashedWeapons.map(sw=>{
+      const w=mkWep(sw.key);
+      w.ammo=sw.ammo;w.reserve=sw.reserve;return w;
+    });
+    widx=prof.stashedWeaponIdx||0;
+    if(widx>=weps.length)widx=0;
+  }else{
+    weps=[mkWep('pistol')];
+    if(hasStarterGear()){const s=mkWep('smg');s.reserve+=50;weps.push(s);}
+  }
   return{id:myId,name:myName,x:sx,y:sy,aimAngle:0,
     health:hp,maxHealth:hp,armor:ar,maxArmor:ar,
-    dead:false,radius:14,weapons:weps,weaponIdx:0,color:'#00ffe7',isLocal:true};
+    dead:false,radius:14,weapons:weps,weaponIdx:widx,color:'#00ffe7',isLocal:true};
 }
 function mkRemote(id,name){return{id,name,x:5*TILE,y:5*TILE,aimAngle:0,health:100,maxHealth:100,dead:false,radius:14,color:'#f64',isLocal:false};}
 function curWep(){return localPlayer?localPlayer.weapons[localPlayer.weaponIdx]:null;}
@@ -941,7 +952,7 @@ function playerDead(killer){
   clearInterval(gameTimer);gameTimer=null;
   let kept=0;
   if(hasInsurance()){kept=Math.floor(sessionLoot*0.3);prof.stash+=kept;}
-  prof.totalRuns++;prof.totalKills+=kills;saveProf();
+  prof.totalRuns++;prof.totalKills+=kills;prof.stashedWeapons=null;prof.stashedWeaponIdx=0;saveProf();
   hideGameHUD();
   document.getElementById('goTitle').textContent='ELIMINATED';
   document.getElementById('goTitle').className='got dead';
@@ -952,12 +963,19 @@ function playerDead(killer){
 function playerExtracted(){
   if(gameState!=='playing')return;
   gameState='won';clearInterval(gameTimer);gameTimer=null;
-  prof.stash+=sessionLoot;prof.totalRuns++;prof.totalKills+=kills;prof.totalExtractions=(prof.totalExtractions||0)+1;saveProf();
+  prof.stash+=sessionLoot;prof.totalRuns++;prof.totalKills+=kills;prof.totalExtractions=(prof.totalExtractions||0)+1;
+  // Save carried weapons into stash for next run
+  if(localPlayer&&localPlayer.weapons){
+    prof.stashedWeapons=localPlayer.weapons.map(w=>({key:w.key,ammo:w.ammo,reserve:w.reserve}));
+    prof.stashedWeaponIdx=localPlayer.weaponIdx||0;
+  }
+  saveProf();
   hideGameHUD();
+  const wList=localPlayer?localPlayer.weapons.map(w=>w.name).join(' + '):'';
   document.getElementById('goTitle').textContent='EXTRACTED!';
   document.getElementById('goTitle').className='got win';
-  document.getElementById('goStats').textContent=`KILLS: ${kills}  |  LOOT: ${sessionLoot}  |  TIME: ${ZONE_SECS-gameTime}s`;
-  document.getElementById('goStash').textContent=`+${sessionLoot} TO STASH  (TOTAL: ${prof.stash})`;
+  document.getElementById('goStats').textContent='KILLS: '+kills+'  |  LOOT: '+sessionLoot+'  |  TIME: '+(ZONE_SECS-gameTime)+'s';
+  document.getElementById('goStash').textContent='+'+sessionLoot+' TO STASH  (TOTAL: '+prof.stash+')  |  GEAR: '+wList;
   showOnly('goScreen');
 }
 function hideGameHUD(){
