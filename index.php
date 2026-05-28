@@ -2,8 +2,103 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>EXFIL // ZERO</title>
+
+<!-- PWA Manifest (inline via blob, no server needed) -->
+<script>
+(function() {
+  const icons = [
+    { purpose: 'any maskable', sizes: '192x192' },
+    { purpose: 'any maskable', sizes: '512x512' }
+  ];
+  // Generate icon as inline SVG → canvas → dataURL
+  function makeIcon(size) {
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const x = c.getContext('2d');
+    // Background
+    x.fillStyle = '#040a0f';
+    x.fillRect(0,0,size,size);
+    // Outer ring
+    x.beginPath();
+    x.arc(size/2,size/2,size*0.44,0,Math.PI*2);
+    x.strokeStyle = '#00ffe7';
+    x.lineWidth = size*0.04;
+    x.stroke();
+    // Inner cross
+    x.strokeStyle = '#00ffe7';
+    x.lineWidth = size*0.06;
+    x.beginPath(); x.moveTo(size/2,size*0.25); x.lineTo(size/2,size*0.75); x.stroke();
+    x.beginPath(); x.moveTo(size*0.25,size/2); x.lineTo(size*0.75,size/2); x.stroke();
+    // Corner accent
+    x.fillStyle = '#ffd700';
+    [0,1,2,3].forEach(i => {
+      const a = i * Math.PI/2 + Math.PI/4;
+      x.beginPath();
+      x.arc(size/2+Math.cos(a)*size*0.32, size/2+Math.sin(a)*size*0.32, size*0.06, 0, Math.PI*2);
+      x.fill();
+    });
+    // Text
+    x.fillStyle = '#00ffe7';
+    x.font = `bold ${size*0.13}px monospace`;
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    x.fillText('EXFIL', size/2, size*0.5);
+    return c.toDataURL('image/png');
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+    const icon192 = makeIcon(192);
+    const icon512 = makeIcon(512);
+    const manifest = {
+      name: 'EXFIL // ZERO',
+      short_name: 'EXFIL',
+      description: 'Top-Down Extraction Shooter',
+      start_url: './',
+      display: 'fullscreen',
+      orientation: 'landscape',
+      background_color: '#040a0f',
+      theme_color: '#040a0f',
+      icons: [
+        { src: icon192, sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+        { src: icon512, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
+      ]
+    };
+    const blob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('link');
+    link.rel = 'manifest';
+    link.href = url;
+    document.head.appendChild(link);
+
+    // iOS splash / icon
+    const appleLink = document.createElement('link');
+    appleLink.rel = 'apple-touch-icon';
+    appleLink.href = icon192;
+    document.head.appendChild(appleLink);
+  });
+})();
+</script>
+
+<!-- iOS PWA fullscreen -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="EXFIL">
+<meta name="mobile-web-app-capable" content="yes">
+
+<!-- Theme color for Android chrome bar -->
+<meta name="theme-color" content="#040a0f">
+
+<!-- Prevent any tap highlight / callout -->
+<style>
+  * { -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+  html {
+    height: 100%; width: 100%;
+    overflow: hidden;
+    position: fixed; /* prevents iOS bounce/scroll */
+  }
+</style>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
 
@@ -23,10 +118,14 @@
     font-family: 'Share Tech Mono', monospace;
     color: var(--neon);
     overflow: hidden;
-    height: 100vh;
-    width: 100vw;
+    height: 100%;
+    width: 100%;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
     touch-action: none;
     user-select: none;
+    /* Safe area for notch / home bar */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
 
   #mainMenu, #lobbyScreen, #gameOverScreen {
@@ -1404,9 +1503,11 @@ function draw() {
 }
 
 function resizeCanvas() {
-  if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+  const w = document.documentElement.clientWidth || window.innerWidth;
+  const h = document.documentElement.clientHeight || window.innerHeight;
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
   }
 }
 window.addEventListener('resize', resizeCanvas);
@@ -1850,7 +1951,95 @@ window.addEventListener('load', () => {
   initDB().then(() => {
     console.log('EXFIL // ZERO ready');
   });
+
+  // ── Service Worker (PWA offline support) ──
+  if ('serviceWorker' in navigator) {
+    const swCode = `
+const CACHE = 'exfil-v1';
+self.addEventListener('install', e => {
+  self.skipWaiting();
 });
+self.addEventListener('activate', e => {
+  e.waitUntil(clients.claim());
+});
+self.addEventListener('fetch', e => {
+  // Cache-first for same-origin, network for rest
+  if (e.request.url.startsWith(self.location.origin)) {
+    e.respondWith(
+      caches.open(CACHE).then(cache =>
+        cache.match(e.request).then(hit => {
+          const fresh = fetch(e.request).then(res => {
+            cache.put(e.request, res.clone());
+            return res;
+          });
+          return hit || fresh;
+        })
+      )
+    );
+  }
+});`;
+    const swBlob = new Blob([swCode], { type: 'application/javascript' });
+    const swUrl = URL.createObjectURL(swBlob);
+    navigator.serviceWorker.register(swUrl).catch(() => {});
+  }
+
+  // ── Install banner (Android) ──
+  let deferredPrompt = null;
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    deferredPrompt = e;
+    showInstallBanner();
+  });
+
+  function showInstallBanner() {
+    const banner = document.createElement('div');
+    banner.id = 'installBanner';
+    banner.style.cssText = `
+      position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+      background:rgba(0,20,30,0.95); border:1px solid #ffd700; color:#ffd700;
+      font-family:'Share Tech Mono',monospace; font-size:0.8rem;
+      padding:10px 20px; z-index:9999; cursor:pointer;
+      letter-spacing:0.15em; white-space:nowrap;
+      box-shadow: 0 0 20px rgba(255,215,0,0.3);
+    `;
+    banner.textContent = '⬇ AUF HOME-SCREEN INSTALLIEREN';
+    banner.addEventListener('click', () => {
+      if (deferredPrompt) { deferredPrompt.prompt(); deferredPrompt = null; }
+      banner.remove();
+    });
+    document.body.appendChild(banner);
+    setTimeout(() => { if (banner.parentNode) banner.remove(); }, 8000);
+  }
+
+  // ── iOS install hint (only shown once, not in standalone) ──
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isStandalone = window.navigator.standalone === true
+    || window.matchMedia('(display-mode: fullscreen)').matches
+    || window.matchMedia('(display-mode: standalone)').matches;
+
+  if (isIOS && !isStandalone && !localStorage.getItem('iosHintShown')) {
+    localStorage.setItem('iosHintShown', '1');
+    setTimeout(() => {
+      const hint = document.createElement('div');
+      hint.style.cssText = `
+        position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+        background:rgba(0,20,30,0.96); border:1px solid #00ffe7; color:#00ffe7;
+        font-family:'Share Tech Mono',monospace; font-size:0.72rem; line-height:1.6;
+        padding:12px 18px; z-index:9999; text-align:center; max-width:280px;
+        letter-spacing:0.1em; box-shadow: 0 0 20px rgba(0,255,231,0.3);
+      `;
+      hint.innerHTML = `📲 AUF HOME-SCREEN INSTALLIEREN<br><span style="color:rgba(0,255,231,0.6)">Teilen → "Zum Home-Bildschirm"</span><br><span style="font-size:0.65rem;opacity:0.5">(Tippen zum Schließen)</span>`;
+      hint.addEventListener('click', () => hint.remove());
+      document.body.appendChild(hint);
+      setTimeout(() => { if (hint.parentNode) hint.remove(); }, 9000);
+    }, 2000);
+  }
+});
+
+// ── Hard scroll/bounce prevention ──
+document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+document.addEventListener('gesturestart', e => e.preventDefault(), { passive: false });
+document.addEventListener('gesturechange', e => e.preventDefault(), { passive: false });
 
 // Prevent context menu on long press
 document.addEventListener('contextmenu', e => e.preventDefault());
