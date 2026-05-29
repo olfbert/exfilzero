@@ -319,42 +319,124 @@ let myName='GHOST',kills=0,sessionLoot=0;
 let extractionProgress=0,isExtracting=false;
 let animId=null,lastT=0,shootCD=0;
 
-// ── P2P (WebRTC) ───────────────────────────────────
+// ── P2P: native WebRTC + WebSocket signaling ─────
+// No external libs. Uses a public WS relay just for SDP/ICE exchange.
+// Game data flows directly P2P over RTCDataChannel.
 let isHost=false,roomCode='';
-let peers={},dcs={},sigWs=null,pCands={};
-const SIG='wss://socketsbay.com/wss/v2/1/demo/';
-function connectSig(){try{sigWs=new WebSocket(SIG);sigWs.onopen=()=>setConn('y','SIGNAL');sigWs.onmessage=e=>{try{onSig(JSON.parse(e.data));}catch(_){}};sigWs.onerror=()=>setConn('r','ERR');sigWs.onclose=()=>{if(gameState==='playing')setConn('r','LOST');};}catch(_){setConn('r','NO NET');}}
-function sendSig(m){if(sigWs&&sigWs.readyState===1)sigWs.send(JSON.stringify({room:roomCode,...m}));}
-async function onSig(m){
-  if(m.room!==roomCode||m.from===myId)return;
-  if(m.type==='join'){if(isHost)await mkPC(m.from,true);updLobby(m.from,m.name);}
-  if(m.type==='offer'){await mkPC(m.from,false);await peers[m.from].setRemoteDescription(new RTCSessionDescription(m.sdp));const a=await peers[m.from].createAnswer();await peers[m.from].setLocalDescription(a);sendSig({type:'answer',from:myId,to:m.from,sdp:a});flushC(m.from);}
-  if(m.type==='answer'&&peers[m.from]){await peers[m.from].setRemoteDescription(new RTCSessionDescription(m.sdp));flushC(m.from);}
-  if(m.type==='ice'&&peers[m.from]){try{await peers[m.from].addIceCandidate(new RTCIceCandidate(m.candidate));}catch(_){}}
-  if(m.type==='start'&&!isHost)startGame(m.seed);
+let rtcPeers={},dcs={},sigWs=null;
+
+// We try multiple public signaling servers in order
+const SIG_SERVERS=[
+  'wss://signal.exfil.workers.dev/', // custom CF worker (if deployed)
+  'wss://ws.vi-server.org/mirror/',
+  'wss://echo.websocket.events/',
+];
+let sigIdx=0;
+
+function openSig(onopen){
+  function tryNext(){
+    if(sigIdx>=SIG_SERVERS.length){setConn('r','NO SIG');return;}
+    const url=SIG_SERVERS[sigIdx++];
+    sigWs=new WebSocket(url);
+    sigWs.onopen=()=>{setConn('y','SIG OK');onopen&&onopen();};
+    sigWs.onmessage=e=>{try{onSigMsg(JSON.parse(e.data));}catch(_){}};
+    sigWs.onerror=()=>{sigWs=null;tryNext();};
+    sigWs.onclose=()=>{if(gameState==='playing')setConn('r','SIG LOST');};
+  }
+  tryNext();
 }
-async function mkPC(pid,init){
-  if(peers[pid])return;
-  const pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
-  peers[pid]=pc;pCands[pid]=[];
-  pc.onicecandidate=e=>{if(e.candidate)sendSig({type:'ice',from:myId,to:pid,candidate:e.candidate});};
-  pc.onconnectionstatechange=()=>{if(pc.connectionState==='connected')setConn('g','P2P OK');if(pc.connectionState==='disconnected')onDrop(pid);};
-  if(init){const dc=pc.createDataChannel('g',{ordered:false,maxRetransmits:0});setupDC(dc,pid);const o=await pc.createOffer();await pc.setLocalDescription(o);sendSig({type:'offer',from:myId,to:pid,sdp:o});}
-  else pc.ondatachannel=e=>setupDC(e.channel,pid);
+
+function sigSend(obj){
+  if(sigWs&&sigWs.readyState===1)
+    sigWs.send(JSON.stringify({...obj,room:roomCode,from:myId}));
 }
-function flushC(pid){(pCands[pid]||[]).forEach(c=>{try{peers[pid].addIceCandidate(new RTCIceCandidate(c));}catch(_){}});pCands[pid]=[];}
-function setupDC(dc,pid){dcs[pid]=dc;dc.onopen=()=>{setConn('g','OK');sndP(pid,{type:'hello',id:myId,name:myName});};dc.onmessage=e=>{try{onPMsg(pid,JSON.parse(e.data));}catch(_){}};dc.onerror=_=>{};}
-function sndP(pid,m){const dc=dcs[pid];if(dc&&dc.readyState==='open')try{dc.send(JSON.stringify(m));}catch(_){}}
+
+async function onSigMsg(m){
+  if(!m||m.room!==roomCode||m.from===myId)return;
+  const pid=m.from;
+  if(m.type==='join'){
+    // Host: someone joined → create offer
+    if(isHost&&!rtcPeers[pid]){
+      updLobby(pid,m.name||pid);
+      await createOffer(pid);
+    }
+  }
+  if(m.type==='offer'&&!isHost){
+    if(!rtcPeers[pid])mkPC(pid);
+    const pc=rtcPeers[pid];
+    await pc.setRemoteDescription(new RTCSessionDescription(m.sdp));
+    const ans=await pc.createAnswer();
+    await pc.setLocalDescription(ans);
+    sigSend({type:'answer',to:pid,sdp:ans});
+  }
+  if(m.type==='answer'&&rtcPeers[pid]){
+    await rtcPeers[pid].setRemoteDescription(new RTCSessionDescription(m.sdp));
+  }
+  if(m.type==='ice'&&rtcPeers[pid]&&m.to===myId){
+    try{await rtcPeers[pid].addIceCandidate(new RTCIceCandidate(m.candidate));}catch(_){}
+  }
+  if(m.type==='start'&&!isHost){
+    startGame(m.seed);
+  }
+}
+
+const ICE={iceServers:[
+  {urls:'stun:stun.l.google.com:19302'},
+  {urls:'stun:stun1.l.google.com:19302'},
+  {urls:'stun:stun.cloudflare.com:3478'},
+]};
+
+function mkPC(pid){
+  if(rtcPeers[pid])return rtcPeers[pid];
+  const pc=new RTCPeerConnection(ICE);
+  rtcPeers[pid]=pc;
+  pc.onicecandidate=e=>{
+    if(e.candidate)sigSend({type:'ice',to:pid,candidate:e.candidate});
+  };
+  pc.onconnectionstatechange=()=>{
+    if(pc.connectionState==='connected')setConn('g','P2P OK');
+    if(pc.connectionState==='disconnected'||pc.connectionState==='failed')onDrop(pid);
+  };
+  pc.ondatachannel=e=>setupDC(e.channel,pid);
+  return pc;
+}
+
+async function createOffer(pid){
+  const pc=mkPC(pid);
+  const dc=pc.createDataChannel('g',{ordered:false,maxRetransmits:0});
+  setupDC(dc,pid);
+  const offer=await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  sigSend({type:'offer',to:pid,sdp:offer});
+}
+
+function setupDC(dc,pid){
+  dcs[pid]=dc;
+  dc.onopen=()=>{
+    setConn('g','LINKED');
+    sndP(pid,{type:'hello',id:myId,name:myName});
+  };
+  dc.onmessage=e=>{try{onPMsg(pid,JSON.parse(e.data));}catch(_){}};
+  dc.onclose=()=>onDrop(pid);
+}
+
+function sndP(pid,m){
+  const dc=dcs[pid];
+  if(dc&&dc.readyState==='open')try{dc.send(JSON.stringify(m));}catch(_){}
+}
 function bcast(m){Object.keys(dcs).forEach(id=>sndP(id,m));}
+function sendSig(m){sigSend(m);}
+
 function onPMsg(pid,m){
-  if(m.type==='hello')players[m.id]=players[m.id]||mkRemote(m.id,m.name);
+  if(m.type==='hello'){players[m.id]=players[m.id]||mkRemote(m.id,m.name);updLobby(m.id,m.name);}
   if(m.type==='state'){if(!players[m.id])players[m.id]=mkRemote(m.id,m.name||'?');const p=players[m.id];p.x=m.x;p.y=m.y;p.aimAngle=m.a;p.health=m.h;p.dead=m.dead;}
   if(m.type==='shoot')spawnBullet(m.x,m.y,m.a,m.id,m.spd,m.col,m.dmg,m.rng);
   if(m.type==='hit'&&m.target===myId&&localPlayer){takeDmg(m.dmg);if(localPlayer.health<=0)playerDead(m.killer);}
   if(m.type==='loot_taken')lootItems=lootItems.filter(l=>l.id!==m.lootId);
   if(m.type==='enemy_dead'){const en=enemies.find(e=>e.id===m.id);if(en)en.health=0;}
+  if(m.type==='start'&&!isHost)startGame(m.seed);
 }
-function onDrop(pid){if(players[pid])players[pid].dead=true;setConn('y','LEFT');}
+function onDrop(pid){if(players[pid])players[pid].dead=true;delete dcs[pid];delete rtcPeers[pid];setConn('y','PEER LEFT');}
 
 // ── Lobby ──────────────────────────────────────────
 let lobbyP={};
@@ -368,22 +450,35 @@ function renderLobby(){
 function toggleJoin(){const s=document.getElementById('joinSection');s.style.display=s.style.display==='none'?'flex':'none';}
 async function createLobby(){
   myName=document.getElementById('nameInput').value.trim().toUpperCase()||'GHOST';
-  isHost=true;roomCode=Math.random().toString(36).slice(2,8).toUpperCase();
-  lobbyP={};updLobby(myId,myName);
+  isHost=true;lobbyP={};updLobby(myId,myName);
   showOnly('lobbyScreen');
-  document.getElementById('lobbyCode').textContent=roomCode;
-  connectSig();setTimeout(()=>sendSig({type:'join',from:myId,name:myName}),800);
+  // Room code = short random alphanum, easy to type
+  roomCode=Math.random().toString(36).slice(2,7).toUpperCase();
+  document.getElementById('lobbyCode').textContent='CONNECTING...';
+  sigIdx=0;
+  openSig(()=>{
+    document.getElementById('lobbyCode').textContent=roomCode;
+    setConn('g','HOSTING — share code above');
+  });
 }
 function joinLobby(){
   myName=document.getElementById('nameInput').value.trim().toUpperCase()||'SHADOW';
-  roomCode=document.getElementById('codeInput').value.trim().toUpperCase();if(!roomCode)return;
-  isHost=false;lobbyP={};updLobby(myId,myName);
+  const code=document.getElementById('codeInput').value.trim().toUpperCase();if(!code)return;
+  roomCode=code;isHost=false;lobbyP={};updLobby(myId,myName);
   showOnly('lobbyScreen');
-  document.getElementById('lobbyCode').textContent=roomCode;
-  connectSig();setTimeout(()=>sendSig({type:'join',from:myId,name:myName}),800);
+  document.getElementById('lobbyCode').textContent=code;
+  sigIdx=0;
+  openSig(()=>{
+    // Announce ourselves to host
+    sigSend({type:'join',name:myName});
+    setConn('y','WAITING FOR HOST...');
+  });
 }
-function leaveLobby(){if(sigWs)try{sigWs.close();}catch(_){}goToMenu();}
-function hostStart(){const seed=Date.now();sendSig({type:'start',from:myId,seed});startGame(seed);}
+function leaveLobby(){
+  if(sigWs)try{sigWs.close();}catch(_){}
+  sigWs=null;rtcPeers={};dcs={};goToMenu();
+}
+function hostStart(){const seed=Date.now();bcast({type:'start',seed});startGame(seed);}
 function startSolo(){myName=document.getElementById('nameInput').value.trim().toUpperCase()||'GHOST';startGame(Date.now());}
 
 // ── Screen helpers ─────────────────────────────────
@@ -401,10 +496,10 @@ function goToShop(){stopGame();openShop();}
 function stopGame(){
   if(animId){cancelAnimationFrame(animId);animId=null;}
   if(gameTimer){clearInterval(gameTimer);gameTimer=null;}
-  if(sigWs){try{sigWs.close();}catch(_){}}
-  sigWs=null;peers={};dcs={};pCands={};lobbyP={};
+  if(sigWs)try{sigWs.close();}catch(_){}
+  sigWs=null;rtcPeers={};dcs={};lobbyP={};
   localPlayer=null;players={};enemies=[];bullets=[];lootItems=[];particles=[];
-  kills=0;sessionLoot=0;gameTime=ZONE_SECS;shootCD=0;isExtracting=false;extractionProgress=0;
+  kills=0;sessionLoot=0;gameTime=ZONE_SECS;shootCD=0;isExtracting=false;extractionProgress=0;grenades=[];mines=[];grenades=[];mines=[];
   gameState='menu';
   // Hide all game HUD
   ['hud','minimap','joyL','joyR','connSt','wBar','swapBtn','exTimer'].forEach(id=>{
@@ -586,6 +681,129 @@ function spawnLoot(sx,sy){
   }
 }
 
+// ── Addons ─────────────────────────────────────────
+const ADDON_DEFS={
+  laser:  {label:'LASER SIGHT', icon:'[L]',color:'#f44'},
+  armor:  {label:'ARMOR PLATE', icon:'[A]',color:'#4af'},
+  grenade:{label:'GRENADE',     icon:'[G]',color:'#fa0'},
+  mine:   {label:'MINE',        icon:'[X]',color:'#ff0'},
+  medkit: {label:'MEDKIT',      icon:'[+]',color:'#0f8'},
+  stim:   {label:'STIM SHOT',   icon:'[!]',color:'#0ff'},
+  xray:   {label:'THERMAL',     icon:'[T]',color:'#f0f'},
+};
+// Emoji for canvas draw (fine in canvas, not in HTML buttons)
+const ADDON_EMOJI={laser:'🔴',armor:'🛡',grenade:'💣',mine:'⚠',medkit:'➕',stim:'⚡',xray:'👁'};
+
+let grenades=[],mines=[];
+
+function spawnAddons(sx,sy){
+  const keys=Object.keys(ADDON_DEFS);
+  for(let i=0;i<22;i++){
+    let x,y,tr=0;
+    do{x=(Math.floor(rnd()*(MAP_W-4))+2)*TILE+TILE/2;y=(Math.floor(rnd()*(MAP_H-4))+2)*TILE+TILE/2;tr++;}while(solid(x,y)&&tr<20);
+    if(!solid(x,y)){
+      const key=keys[Math.floor(rnd()*keys.length)];
+      const d=ADDON_DEFS[key];
+      lootItems.push({type:'addon',addonKey:key,icon:ADDON_EMOJI[key],color:d.color,label:d.label,x,y,id:'ad_'+i,collected:false});
+    }
+  }
+}
+
+function applyAddon(key){
+  if(!localPlayer)return;
+  if(!localPlayer.addons)localPlayer.addons={};
+  if(!localPlayer.timers)localPlayer.timers={};
+  switch(key){
+    case 'laser': localPlayer.addons.laser=true; showPopup('LASER — tight spread'); break;
+    case 'armor':
+      const gained=30; localPlayer.armor=Math.min((localPlayer.armor||0)+gained,(localPlayer.maxArmor||20)+gained);
+      localPlayer.maxArmor=Math.max(localPlayer.maxArmor||0,localPlayer.armor);
+      showPopup('+30 ARMOR PLATE'); break;
+    case 'grenade': localPlayer.addons.grenades=(localPlayer.addons.grenades||0)+2; showPopup('GRENADES x'+(localPlayer.addons.grenades)+' — [G] throw'); break;
+    case 'mine':    localPlayer.addons.mines=(localPlayer.addons.mines||0)+2;    showPopup('MINES x'+(localPlayer.addons.mines)+' — [M] place'); break;
+    case 'medkit':  localPlayer.health=Math.min(localPlayer.health+60,localPlayer.maxHealth); showPopup('+60 HP MEDKIT'); break;
+    case 'stim':    localPlayer.timers.stim=(localPlayer.timers.stim||0)+10;  showPopup('STIM — +50% speed 10s'); break;
+    case 'xray':    localPlayer.timers.xray=(localPlayer.timers.xray||0)+15;  showPopup('THERMAL — see enemies 15s'); break;
+  }
+}
+
+function throwGrenade(){
+  if(!localPlayer||!(localPlayer.addons&&localPlayer.addons.grenades>0))return;
+  localPlayer.addons.grenades--;
+  grenades.push({x:localPlayer.x,y:localPlayer.y,vx:Math.cos(localPlayer.aimAngle)*220,vy:Math.sin(localPlayer.aimAngle)*220,timer:1.8,owner:'local'});
+  showPopup('GRENADE ('+(localPlayer.addons.grenades)+' LEFT)');
+}
+function placeMine(){
+  if(!localPlayer||!(localPlayer.addons&&localPlayer.addons.mines>0))return;
+  localPlayer.addons.mines--;
+  mines.push({x:localPlayer.x,y:localPlayer.y,armTimer:1.5});
+  showPopup('MINE PLACED ('+(localPlayer.addons.mines)+' LEFT)');
+}
+
+function updGrenadesMines(dt){
+  for(let i=grenades.length-1;i>=0;i--){
+    const g=grenades[i];
+    g.x+=g.vx*dt;g.y+=g.vy*dt;g.vx*=0.88;g.vy*=0.88;g.timer-=dt;
+    if(g.timer<=0||solid(g.x,g.y)){explodeAt(g.x,g.y,80,40);grenades.splice(i,1);}
+  }
+  for(let i=mines.length-1;i>=0;i--){
+    const m=mines[i];
+    m.armTimer-=dt;if(m.armTimer>0)continue;
+    for(const en of enemies){
+      if(en.health<=0)continue;
+      if(Math.hypot(en.x-m.x,en.y-m.y)<22){explodeAt(m.x,m.y,70,55);mines.splice(i,1);break;}
+    }
+  }
+  if(localPlayer&&localPlayer.timers){
+    if((localPlayer.timers.stim||0)>0)localPlayer.timers.stim-=dt;
+    if((localPlayer.timers.xray||0)>0)localPlayer.timers.xray-=dt;
+  }
+}
+
+function explodeAt(x,y,radius,dmg){
+  spawnPart(x,y,'#f80',30);spawnPart(x,y,'#ff4',15);spawnPart(x,y,'#fff',8);
+  for(const en of enemies){
+    if(en.health<=0)continue;
+    const d=Math.hypot(en.x-x,en.y-y);
+    if(d<radius){const h=Math.round(dmg*(1-d/radius));en.health-=h;if(en.health<=0){kills++;sessionLoot+=en.reward;addKF(en.type.toUpperCase()+' ELIMINATED');spawnPart(en.x,en.y,en.color,20);}}
+  }
+  if(localPlayer&&!localPlayer.dead&&Math.hypot(localPlayer.x-x,localPlayer.y-y)<radius*0.5)takeDmg(Math.round(dmg*0.4));
+}
+
+function drawGrenadesMines(){
+  const t=Date.now()*0.006;
+  for(const g of grenades){
+    ctx.beginPath();ctx.arc(g.x,g.y,7,0,Math.PI*2);ctx.fillStyle='#f80';ctx.fill();
+    ctx.strokeStyle='#ff0';ctx.lineWidth=2;ctx.stroke();
+  }
+  for(const m of mines){
+    const armed=m.armTimer<=0,pulse=armed?(Math.sin(t*5)*0.4+0.6):0.3;
+    ctx.beginPath();ctx.arc(m.x,m.y,9,0,Math.PI*2);
+    ctx.fillStyle=armed?'rgba(255,80,0,'+pulse.toFixed(2)+')':'rgba(255,200,0,0.3)';ctx.fill();
+    ctx.strokeStyle=armed?'#f50':'#ff0';ctx.lineWidth=1.5;ctx.stroke();
+    ctx.font='7px monospace';ctx.textAlign='center';ctx.fillStyle='#fff';ctx.fillText(armed?'M':'.',m.x,m.y+2);
+  }
+}
+
+function drawAddonBar(){
+  if(!localPlayer)return;
+  const ad=localPlayer.addons||{},ti=localPlayer.timers||{};
+  const items=[];
+  if(ad.laser)items.push('LASER');
+  if(ad.grenades>0)items.push('G:'+ad.grenades);
+  if(ad.mines>0)items.push('M:'+ad.mines);
+  if((ti.stim||0)>0)items.push('STIM '+Math.ceil(ti.stim)+'s');
+  if((ti.xray||0)>0)items.push('XRAY '+Math.ceil(ti.xray)+'s');
+  if(!items.length)return;
+  const y0=canvas.height-168,x0=8;
+  items.forEach((txt,i)=>{
+    const bx=x0+i*52;
+    ctx.fillStyle='rgba(0,20,30,0.75)';ctx.fillRect(bx,y0,48,22);
+    ctx.strokeStyle='rgba(0,255,231,0.4)';ctx.lineWidth=1;ctx.strokeRect(bx,y0,48,22);
+    ctx.font='8px monospace';ctx.fillStyle='#0fe';ctx.textAlign='center';ctx.fillText(txt,bx+24,y0+14);
+  });
+}
+
 // ── Combat ─────────────────────────────────────────
 function spawnBullet(x,y,angle,oid,spd,col,dmg,rng){
   bullets.push({x,y,vx:Math.cos(angle)*spd,vy:Math.sin(angle)*spd,ownerId:oid,life:rng,radius:oid.startsWith('e_')?3.5:4,color:col,damage:dmg});
@@ -674,6 +892,8 @@ document.addEventListener('keydown',e=>{
   if(e.code==='Space'||e.code==='KeyF')doShoot();
   if(e.code==='KeyR')doReload();
   if(e.code==='KeyQ')cycleWep();
+  if(e.code==='KeyG')throwGrenade();
+  if(e.code==='KeyM'||e.code==='KeyV')placeMine();
   if(e.code==='Digit1')switchTo(0);
   if(e.code==='Digit2')switchTo(1);
   if(e.code==='Digit3')switchTo(2);
@@ -694,7 +914,7 @@ function startGame(seed){
   genMap(seed);
   const{sx,sy}=placeSpawnAndExtraction();
   localPlayer=mkLocal(sx,sy);players[myId]=localPlayer;
-  spawnEnemies(sx,sy);spawnLoot(sx,sy);
+  spawnEnemies(sx,sy);spawnLoot(sx,sy);spawnAddons(sx,sy);
   resize();
   ['hud','minimap','connSt','joyL','joyR'].forEach(id=>document.getElementById(id).style.display=id==='hud'?'flex':'block');
   document.getElementById('wBar').style.display='flex';
@@ -721,7 +941,8 @@ function update(dt){
   if(keys['KeyA']||keys['ArrowLeft'])mx-=1;if(keys['KeyD']||keys['ArrowRight'])mx+=1;
   mx+=jL.dx;my+=jL.dy;
   const ml=Math.hypot(mx,my);if(ml>1){mx/=ml;my/=ml;}
-  const spd=calcSpeed()*dt,r=localPlayer.radius;
+  const stimOn=localPlayer.timers&&(localPlayer.timers.stim||0)>0;
+  const spd=calcSpeed()*(stimOn?1.5:1)*dt,r=localPlayer.radius;
   const nx=localPlayer.x+mx*spd,ny=localPlayer.y+my*spd;
   if(!solid(nx+r,localPlayer.y)&&!solid(nx-r,localPlayer.y))localPlayer.x=nx;
   if(!solid(localPlayer.x,ny+r)&&!solid(localPlayer.x,ny-r))localPlayer.y=ny;
@@ -730,7 +951,7 @@ function update(dt){
   if(w&&w.reloading&&performance.now()-w.reloadStart>=w.reloadTime*calcRldMult()){
     const need=WDEFS[w.key].ammo-w.ammo,take=Math.min(need,w.reserve);w.ammo+=take;w.reserve-=take;w.reloading=false;updHUD();updWBar();
   }
-  updCam();updEnemies(dt);updBullets(dt);
+  updCam();updEnemies(dt);updBullets(dt);updGrenadesMines(dt);
   for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt;p.vx*=0.92;p.vy*=0.92;if(p.life<=0)particles.splice(i,1);}
   for(const l of lootItems)if(!l.collected&&Math.hypot(l.x-localPlayer.x,l.y-localPlayer.y)<30)collectLoot(l);
   const dex=Math.hypot(localPlayer.x-extractionZone.x,localPlayer.y-extractionZone.y);
@@ -752,8 +973,9 @@ function doShoot(){
   if(shootCD>0)return;
   shootCD=w.fireRate;w.ammo--;
   const dmg=Math.round(w.damage*calcDmgMult());
+  const laserOn=localPlayer.addons&&localPlayer.addons.laser;
   for(let i=0;i<w.burst;i++){
-    const a=localPlayer.aimAngle+(Math.random()-0.5)*w.spread*2;
+    const a=localPlayer.aimAngle+(Math.random()-0.5)*w.spread*(laserOn?0.25:2);
     spawnBullet(localPlayer.x,localPlayer.y,a,myId,w.bulletSpd,w.color,dmg,w.range);
     bcast({type:'shoot',x:localPlayer.x,y:localPlayer.y,a,id:myId,spd:w.bulletSpd,col:w.color,dmg,rng:w.range});
   }
@@ -821,6 +1043,7 @@ function collectLoot(l){
   if(l.type==='ammo'){const w=curWep();if(w){w.reserve=Math.min(w.reserve+WDEFS[w.key].res,WDEFS[w.key].res*3);showPopup('AMMO +'+WDEFS[w.key].res);}
   }else if(l.type==='health'){localPlayer.health=Math.min(localPlayer.health+l.value,localPlayer.maxHealth);showPopup(l.label);
   }else if(l.type==='weapon'){equipWeapon(l.wkey);
+  }else if(l.type==='addon'){applyAddon(l.addonKey);
   }else{sessionLoot+=l.value;showPopup(l.label);}
   spawnPart(l.x,l.y,l.color,12);bcast({type:'loot_taken',lootId:l.id});
   updHUD();updWBar();
@@ -838,8 +1061,8 @@ const TC={0:'#0a1520',1:'#1a2535',2:'#162030',3:'#061520',4:'#0a1f10'};
 function draw(){
   resize();ctx.clearRect(0,0,canvas.width,canvas.height);
   ctx.save();ctx.translate(-cam.x,-cam.y);
-  drawMap();drawEZ();drawLoot();drawEnemies();drawBullets();drawParts();drawPlayers();
-  ctx.restore();drawMM();
+  drawMap();drawEZ();drawLoot();drawEnemies();drawBullets();drawParts();drawPlayers();drawGrenadesMines();
+  ctx.restore();drawAddonBar();drawMM();
 }
 function resize(){const w=window.innerWidth,h=window.innerHeight;if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}}
 window.addEventListener('resize',()=>{resize();updCam();});
@@ -920,7 +1143,7 @@ function drawMM(){
     if(t===1){mmCtx.fillStyle='#2a3a50';mmCtx.fillRect(tx*TILE*sx,ty*TILE*sy,TILE*sx+.5,TILE*sy+.5);}
     if(t===4){mmCtx.fillStyle='rgba(0,200,80,0.4)';mmCtx.fillRect(tx*TILE*sx,ty*TILE*sy,TILE*sx+.5,TILE*sy+.5);}
   }
-  if(hasRadar())for(const en of enemies){if(en.health<=0)continue;mmCtx.beginPath();mmCtx.arc(en.x*sx,en.y*sy,1.5,0,Math.PI*2);mmCtx.fillStyle=en.state==='chase'?'#f40':'#f22';mmCtx.fill();}
+  const xrayOn=localPlayer&&(localPlayer.timers||{}).xray>0;if(hasRadar()||xrayOn)for(const en of enemies){if(en.health<=0)continue;mmCtx.beginPath();mmCtx.arc(en.x*sx,en.y*sy,1.5,0,Math.PI*2);mmCtx.fillStyle=en.state==='chase'?'#f40':'#f22';mmCtx.fill();}
   for(const l of lootItems){if(l.collected)continue;mmCtx.beginPath();mmCtx.arc(l.x*sx,l.y*sy,l.type==='weapon'?2.5:1,0,Math.PI*2);mmCtx.fillStyle=l.type==='weapon'?l.color:'#fd0';mmCtx.fill();}
   Object.values(players).filter(p=>!p.isLocal&&!p.dead).forEach(p=>{mmCtx.beginPath();mmCtx.arc(p.x*sx,p.y*sy,2.5,0,Math.PI*2);mmCtx.fillStyle='#f64';mmCtx.fill();});
   if(localPlayer){mmCtx.beginPath();mmCtx.arc(localPlayer.x*sx,localPlayer.y*sy,3,0,Math.PI*2);mmCtx.fillStyle='#0fe';mmCtx.fill();}
