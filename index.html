@@ -112,6 +112,30 @@ input::placeholder{color:rgba(0,255,231,.3);}
 .dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:#888;margin-right:3px;}
 .dg{background:#0f8;}.dy{background:var(--gold);}.dr{background:var(--red);}
 
+/* ── ACTION BUTTONS (grenade / mine) ── */
+#actBtns{position:fixed;bottom:calc(22px + env(safe-area-inset-bottom,0px));
+  left:calc(140px + env(safe-area-inset-left,0px));
+  display:none;flex-direction:column;gap:6px;z-index:61;pointer-events:auto;}
+.actBtn{width:54px;height:54px;border-radius:10px;border:2px solid;
+  background:rgba(0,0,0,.5);display:flex;flex-direction:column;align-items:center;
+  justify-content:center;cursor:pointer;font-size:.5rem;letter-spacing:.04em;touch-action:auto;pointer-events:auto;}
+.actBtn:active{opacity:.6;}
+.actBtn.grn{border-color:#fa0;color:#fa0;}
+.actBtn.mne{border-color:#ff0;color:#ff0;}
+.actBtn .aic{font-size:1.2rem;}
+.actBtn .acnt{font-size:.6rem;position:absolute;top:3px;right:5px;color:inherit;}
+
+/* ── WEAPONS DEALER ── */
+#sDealer{overflow-y:auto;}
+.wdgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%;max-width:440px;margin-bottom:12px;}
+.wdi{background:var(--panel);border:1px solid rgba(0,255,231,.3);padding:10px 8px;text-align:center;cursor:pointer;position:relative;}
+.wdi:active{background:rgba(0,255,231,.1);}
+.wdi .wdico{font-size:1.6rem;margin-bottom:3px;}
+.wdi .wdnm{font-size:.65rem;letter-spacing:.08em;color:var(--neon);margin-bottom:2px;}
+.wdi .wdst{font-size:.52rem;color:rgba(0,255,231,.45);margin-bottom:4px;line-height:1.4;}
+.wdi .wdpr{font-size:.72rem;color:var(--gold);}
+.wdi .wdtag{position:absolute;top:3px;right:4px;font-size:.48rem;color:rgba(0,255,231,.4);}
+
 .scanline{position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.06) 2px,rgba(0,0,0,.06) 4px);pointer-events:none;z-index:999;}
 </style>
 </head>
@@ -127,6 +151,7 @@ input::placeholder{color:rgba(0,255,231,.3);}
   <input id="iName" placeholder="CALL SIGN" maxlength="12">
   <button class="btn gold" onclick="soloRun()">SOLO RUN</button>
   <button class="btn" onclick="openShop()">UPGRADE SHOP</button>
+  <button class="btn" onclick="openDealer()">WEAPONS DEALER</button>
   <button class="btn" onclick="doHost()">HOST GAME</button>
   <button class="btn" onclick="toggleJoin()">JOIN GAME</button>
   <div id="joinSec" style="display:none;flex-direction:column;align-items:center;">
@@ -185,6 +210,28 @@ input::placeholder{color:rgba(0,255,231,.3);}
 <div id="joyL"><div class="jt" id="tL"></div></div>
 <div id="joyR"><div class="jt" id="tR"></div></div>
 <div id="swapBtn" onclick="cycleWep()"><span style="font-size:1.1rem;">🔄</span><span>SWAP</span></div>
+
+<!-- ACTION BUTTONS -->
+<div id="actBtns">
+  <div class="actBtn grn" id="btnGrenade" onclick="throwGrenade()">
+    <span class="acnt" id="grnCnt">0</span>
+    <span class="aic">💣</span>
+    <span>GREN</span>
+  </div>
+  <div class="actBtn mne" id="btnMine" onclick="placeMine()">
+    <span class="acnt" id="mneCnt">0</span>
+    <span class="aic">⚠</span>
+    <span>MINE</span>
+  </div>
+</div>
+
+<!-- WEAPONS DEALER SCREEN -->
+<div id="sDealer" class="scr" style="display:none;">
+  <div class="logo" style="font-size:1.3rem;margin-bottom:.2rem;">🔫 ARMS DEALER</div>
+  <div style="font-size:.8rem;color:var(--gold);margin-bottom:.6rem;">STASH: <span id="dlrGold">0</span> 💰</div>
+  <div class="wdgrid" id="dlrGrid"></div>
+  <button class="btn red sm" onclick="goToMenu()">BACK</button>
+</div>
 
 <!-- GAME OVER -->
 <div id="sOver" class="scr" style="display:none;">
@@ -337,7 +384,7 @@ function genMap(seed) {
       map[y][x] = r < .10 ? 1 : r < .15 ? 2 : 0;
     }
   }
-  // Carve open rooms so player always has space
+  // Carve open rooms and guarantee doorways
   for (let i = 0; i < 16; i++) {
     const rx = Math.floor(rnd()*(MW-16))+4;
     const ry = Math.floor(rnd()*(MH-16))+4;
@@ -346,13 +393,59 @@ function genMap(seed) {
     for (let dy=ry; dy<ry+rh && dy<MH-1; dy++)
       for (let dx=rx; dx<rx+rw && dx<MW-1; dx++)
         map[dy][dx] = 0;
-    // thin walls around room
+    // Walls around room
     for (let dy=ry-1; dy<=ry+rh && dy<MH-1; dy++)
       for (let dx=rx-1; dx<=rx+rw && dx<MW-1; dx++) {
         if (dy<1||dx<1) continue;
         if ((dy===ry-1||dy===ry+rh||dx===rx-1||dx===rx+rw) && map[dy][dx]===0)
           map[dy][dx]=1;
       }
+    // Punch AT LEAST 2 doorways (one on each axis) so no room is sealed
+    // Door on top or bottom wall
+    const doorX1 = rx + 1 + Math.floor(rnd()*(rw-2));
+    const doorY1 = (rnd()<.5) ? ry-1 : ry+rh;
+    if (doorY1>0 && doorY1<MH-1 && doorX1>0 && doorX1<MW-1) map[doorY1][doorX1]=0;
+    if (doorX1+1<MW-1) map[Math.min(doorY1,MH-2)][doorX1+1]=0; // 2-wide door
+    // Door on left or right wall
+    const doorY2 = ry + 1 + Math.floor(rnd()*(rh-2));
+    const doorX2 = (rnd()<.5) ? rx-1 : rx+rw;
+    if (doorX2>0 && doorX2<MW-1 && doorY2>0 && doorY2<MH-1) map[doorY2][doorX2]=0;
+    if (doorY2+1<MH-1) map[doorY2+1][Math.min(doorX2,MW-2)]=0; // 2-tall door
+  }
+  // Connectivity pass: flood fill from centre, carve path to any isolated floors
+  const cx=Math.floor(MW/2), cy=Math.floor(MH/2);
+  if(map[cy][cx]!==0){map[cy][cx]=0;}
+  // Simple tunnel carver: link unconnected open tiles
+  function floodMark() {
+    const vis=[];
+    for(let y=0;y<MH;y++){vis[y]=[];for(let x=0;x<MW;x++)vis[y][x]=false;}
+    const q=[];
+    // find any floor tile near centre
+    outer: for(let r2=0;r2<Math.max(MW,MH);r2++)
+      for(let dy=-r2;dy<=r2;dy++) for(let dx=-r2;dx<=r2;dx++){
+        const tx=cx+dx,ty=cy+dy;
+        if(tx>=0&&tx<MW&&ty>=0&&ty<MH&&map[ty][tx]===0){q.push([tx,ty]);vis[ty][tx]=true;break outer;}
+      }
+    while(q.length){
+      const [x,y]=q.shift();
+      for(const [nx,ny] of [[x+1,y],[x-1,y],[x,y+1],[x,y-1]])
+        if(nx>=0&&nx<MW&&ny>=0&&ny<MH&&!vis[ny][nx]&&map[ny][nx]===0){vis[ny][nx]=true;q.push([nx,ny]);}
+    }
+    return vis;
+  }
+  const reachable=floodMark();
+  // Carve simple paths from unreachable floors to nearest reachable
+  for(let y=1;y<MH-1;y++) for(let x=1;x<MW-1;x++){
+    if(map[y][x]===0&&!reachable[y][x]){
+      // Walk toward centre until we hit reachable
+      let px=x,py=y;
+      for(let step=0;step<MW+MH;step++){
+        if(reachable[py][px])break;
+        if(px<cx)px++;else if(px>cx)px--;
+        else if(py<cy)py++;else py--;
+        if(px>=1&&px<MW-1&&py>=1&&py<MH-1)map[py][px]=0;
+      }
+    }
   }
 }
 
@@ -432,7 +525,7 @@ function mkLP(sx,sy) {
   if (prof.stashWeps && prof.stashWeps.length) {
     weps = prof.stashWeps.map(w => {const nw=mkWep(w.key);nw.ammo=w.ammo;nw.reserve=w.res;return nw;});
   }
-  return {
+  const player = {
     id:myId, name:myName, x:sx, y:sy, aimA:0,
     hp:hp, maxHP:hp, armor:ar, maxArmor:ar,
     dead:false, radius:13,
@@ -441,6 +534,8 @@ function mkLP(sx,sy) {
     timers:{stim:0,xray:0},
     color:'#00ffe7', isLocal:true,
   };
+  applyDealerPurchases(player);
+  return player;
 }
 function mkRP(id,name) {
   return {id,name,x:3*T,y:3*T,aimA:0,hp:100,maxHP:100,dead:false,radius:13,color:'#f64',isLocal:false};
@@ -557,6 +652,7 @@ function applyAddon(key) {
     case 'stim':    lp.timers.stim+=10;  popup('STIM 10s'); break;
     case 'xray':    lp.timers.xray+=15;  popup('THERMAL 15s'); break;
   }
+  updActBtns();
 }
 function throwGrenade() {
   if (!lp||!lp.addons.grenades||GS!=='playing') return;
@@ -831,7 +927,7 @@ function soloRun() {
 }
 
 // ── Screen helpers ─────────────────────────────────────
-const SCREENS=['sMenu','sShop','sLobby','sOver'];
+const SCREENS=['sMenu','sShop','sLobby','sOver','sDealer'];
 function showScr(id) {
   SCREENS.forEach(s=>{
     const el=document.getElementById(s);
@@ -899,6 +995,7 @@ function startGame(seed) {
   document.getElementById('joyR').style.display='block';
   document.getElementById('wBar').style.display='flex';
   document.getElementById('swapBtn').style.display='flex';
+  document.getElementById('actBtns').style.display='flex';
 
   initJoy(); updWBar(); updHUD();
   if (zoneTimer) clearInterval(zoneTimer);
@@ -921,7 +1018,7 @@ function stopGame() {
   sigWs=null; rtcPeers={}; rtcDCs={}; lobbyPeers={};
   lp=null; pOther={}; enemies=[]; bullets=[]; loot=[]; grenades=[]; mines=[]; parts=[];
   sessionLoot=0; sessionKills=0;
-  ['hud','minimap','mm','connSt','joyL','joyR','wBar','swapBtn','exTimer'].forEach(id=>{
+  ['hud','minimap','mm','connSt','joyL','joyR','wBar','swapBtn','actBtns','exTimer'].forEach(id=>{
     const el=document.getElementById(id); if(el)el.style.display='none';
   });
   gx.clearRect(0,0,gc.width,gc.height);
@@ -1132,7 +1229,7 @@ function collectLoot(l) {
   }
   spawnPart(l.x,l.y,l.col||'#fd0',10);
   bcast({type:'loot_take',lid:l.id});
-  updHUD(); updWBar();
+  updHUD(); updWBar(); updActBtns();
 }
 
 // ── Draw ──────────────────────────────────────────────
@@ -1301,6 +1398,17 @@ function drawOnePlayer(p) {
   gx.beginPath();gx.moveTo(x+Math.cos(aimA)*r,y+Math.sin(aimA)*r);
   gx.lineTo(x+Math.cos(aimA)*gl,y+Math.sin(aimA)*gl);
   gx.strokeStyle=col;gx.lineWidth=3;gx.stroke();
+  // Laser pointer beam
+  if(isLocal&&p.addons&&p.addons.laser){
+    const laserLen=220;
+    const lx2=x+Math.cos(aimA)*laserLen, ly2=y+Math.sin(aimA)*laserLen;
+    gx.beginPath();gx.moveTo(x+Math.cos(aimA)*gl,y+Math.sin(aimA)*gl);
+    gx.lineTo(lx2,ly2);
+    gx.strokeStyle='rgba(255,0,0,0.35)';gx.lineWidth=1.5;gx.stroke();
+    // Laser dot — red glowing circle at endpoint
+    gx.beginPath();gx.arc(lx2,ly2,4,0,Math.PI*2);
+    gx.fillStyle='#f00';gx.shadowColor='#f00';gx.shadowBlur=10;gx.fill();gx.shadowBlur=0;
+  }
   // Weapon icon ABOVE player (not overlapping)
   if(isLocal&&curWep()){
     gx.font='11px serif';gx.textAlign='center';
@@ -1407,6 +1515,15 @@ function updHUD(){
   const w=curWep();
   document.getElementById('hAmmo').textContent=w?w.ammo+'/'+w.reserve+(w.reloading?' R':''):'-';
 }
+function updActBtns(){
+  if(!lp)return;
+  const gc2=lp.addons.grenades||0, mc=lp.addons.mines||0;
+  const bg=document.getElementById('btnGrenade'),bm=document.getElementById('btnMine');
+  const gc3=document.getElementById('grnCnt'),mc2=document.getElementById('mneCnt');
+  if(gc3)gc3.textContent=gc2;if(mc2)mc2.textContent=mc;
+  if(bg)bg.style.opacity=gc2>0?'1':'.4';
+  if(bm)bm.style.opacity=mc>0?'1':'.4';
+}
 function updWBar(){
   if(!lp)return;
   const bar=document.getElementById('wBar');bar.innerHTML='';
@@ -1467,7 +1584,7 @@ function playerExtracted(){
   showScr('sOver');
 }
 function hideGameHUD(){
-  ['hud','minimap','mm','connSt','joyL','joyR','wBar','swapBtn','exTimer'].forEach(id=>{
+  ['hud','minimap','mm','connSt','joyL','joyR','wBar','swapBtn','actBtns','exTimer'].forEach(id=>{
     const el=document.getElementById(id);if(el)el.style.display='none';
   });
 }
@@ -1516,6 +1633,99 @@ function setupPWA(){
     b.textContent='Installieren';b.onclick=()=>{e.prompt();b.remove();};document.body.appendChild(b);
     setTimeout(()=>{if(b.parentNode)b.remove();},8000);
   });
+}
+
+// ── Weapons Dealer ──────────────────────────────────
+const DEALER_STOCK = [
+  {key:'smg',    name:'SMG',    icon:'⚡',  ammo:true,  price:120, desc:'30 rounds, fast fire'},
+  {key:'shotgun',name:'SHOTGUN',icon:'💥', ammo:true,  price:150, desc:'6 shells, close range'},
+  {key:'rifle',  name:'RIFLE',  icon:'🎯', ammo:true,  price:200, desc:'20 rounds, precise'},
+  {key:'sniper', name:'SNIPER', icon:'🔭', ammo:true,  price:300, desc:'5 rounds, one-shot'},
+  {key:'pistol', name:'PISTOL', icon:'🔫', ammo:true,  price:60,  desc:'12 rounds, starter'},
+  {key:'ammo',   name:'AMMO PACK',icon:'🔋',ammo:false, price:80,  desc:'Refill current weapon'},
+  {key:'medkit', name:'MEDKIT', icon:'➕', ammo:false, price:100, desc:'+60 HP'},
+  {key:'armor',  name:'ARMOR PLATE',icon:'🛡',ammo:false,price:120,desc:'+30 armor'},
+  {key:'grenade',name:'GRENADES',icon:'💣',ammo:false, price:90,  desc:'x2 grenades'},
+  {key:'mine',   name:'MINES',  icon:'⚠', ammo:false, price:80,  desc:'x2 proximity mines'},
+  {key:'laser',  name:'LASER SIGHT',icon:'🔴',ammo:false,price:110,desc:'Tight spread + dot'},
+  {key:'stim',   name:'STIM SHOT',icon:'⚡',ammo:false,price:90,  desc:'+50% speed 15s'},
+];
+
+let dealerSeed = 0; // randomize stock per run
+
+function openDealer() {
+  renderDealer();
+  showScr('sDealer');
+}
+
+function renderDealer() {
+  document.getElementById('dlrGold').textContent = prof.stash;
+  const g = document.getElementById('dlrGrid'); g.innerHTML='';
+  // Shuffle stock with seed for variety
+  const stock = [...DEALER_STOCK].sort(()=>Math.random()-.5).slice(0,8);
+  stock.forEach(item => {
+    const afford = prof.stash >= item.price;
+    const d = document.createElement('div');
+    d.className='wdi';
+    d.innerHTML=`<div class="wdico">${item.icon}</div>
+      <div class="wdnm">${item.name}</div>
+      <div class="wdst">${item.desc}</div>
+      <div class="wdpr">${afford?'BUY '+item.price+' 💰':'NEED '+item.price+' 💰'}</div>`;
+    if (afford) d.onclick=()=>dealerBuy(item);
+    else d.style.opacity='.5';
+    g.appendChild(d);
+  });
+}
+
+function dealerBuy(item) {
+  if (prof.stash < item.price) return;
+  prof.stash -= item.price;
+  saveProf();
+  // Apply immediately to profile stash (carried into next run if extracted)
+  switch(item.key) {
+    case 'ammo':    prof.dealerAmmo = (prof.dealerAmmo||0)+1; break;
+    case 'medkit':  prof.dealerHP   = (prof.dealerHP||0)+60; break;
+    case 'armor':   prof.dealerArmor= (prof.dealerArmor||0)+30; break;
+    case 'grenade': prof.dealerGren = (prof.dealerGren||0)+2; break;
+    case 'mine':    prof.dealerMine = (prof.dealerMine||0)+2; break;
+    case 'laser':   prof.dealerLaser= true; break;
+    case 'stim':    prof.dealerStim = (prof.dealerStim||0)+15; break;
+    default: // weapon key
+      if (!prof.dealerWeps) prof.dealerWeps=[];
+      const existing=prof.dealerWeps.findIndex(w=>w.key===item.key);
+      if (existing>=0) prof.dealerWeps[existing].reserve+=WDEFS[item.key].res;
+      else prof.dealerWeps.push({key:item.key,ammo:WDEFS[item.key].ammo,res:WDEFS[item.key].res});
+  }
+  saveProf();
+  renderDealer();
+  popup(item.name+' PURCHASED — ready next run');
+}
+
+// Apply dealer purchases at run start (called inside mkLP)
+function applyDealerPurchases(player) {
+  if (!prof.dealerWeps) prof.dealerWeps=[];
+  // Merge dealer weapons
+  for (const dw of prof.dealerWeps) {
+    const ei=player.weps.findIndex(w=>w.key===dw.key);
+    if (ei>=0) player.weps[ei].reserve+=dw.res;
+    else if(player.weps.length<3) player.weps.push(mkWep(dw.key));
+  }
+  if (prof.dealerHP)    { player.hp=Math.min(player.hp+(prof.dealerHP),player.maxHP); }
+  if (prof.dealerArmor) { player.armor+=prof.dealerArmor; player.maxArmor=Math.max(player.maxArmor,player.armor); }
+  if (prof.dealerGren)  { player.addons.grenades+=prof.dealerGren; }
+  if (prof.dealerMine)  { player.addons.mines+=prof.dealerMine; }
+  if (prof.dealerLaser) { player.addons.laser=true; }
+  if (prof.dealerStim)  { player.timers.stim+=prof.dealerStim; }
+  // Ammo pack refills current weapon
+  if (prof.dealerAmmo&&player.weps.length) {
+    const w=player.weps[player.wi||0];
+    w.reserve=Math.min(w.reserve+WDEFS[w.key].res*(prof.dealerAmmo),WDEFS[w.key].res*4);
+  }
+  // Clear dealer items (consumed at run start)
+  prof.dealerWeps=[]; prof.dealerAmmo=0; prof.dealerHP=0;
+  prof.dealerArmor=0; prof.dealerGren=0; prof.dealerMine=0;
+  prof.dealerLaser=false; prof.dealerStim=0;
+  saveProf();
 }
 
 // ── Boot ──────────────────────────────────────────────
