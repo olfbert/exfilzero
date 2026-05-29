@@ -14,7 +14,7 @@
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;}
 html,body{width:100%;height:100%;overflow:hidden;background:var(--dark);touch-action:none;user-select:none;-webkit-user-select:none;font-family:var(--f);color:var(--neon);}
 body{padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px);}
-canvas{position:fixed;top:0;left:0;width:100%;height:100%;display:block;}
+#gc{position:fixed;top:0;left:0;display:block;}
 
 /* ── SCREENS ── */
 .scr{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;
@@ -141,7 +141,7 @@ input::placeholder{color:rgba(0,255,231,.3);}
   <div class="logo" style="font-size:1.3rem;margin-bottom:.3rem;">UPGRADE SHOP</div>
   <div style="font-size:.8rem;color:var(--gold);margin-bottom:.7rem;">STASH: <span id="shGold">0</span> 💰</div>
   <div class="sgrid" id="shGrid"></div>
-  <button class="btn red sm" onclick="showScr('sMenu')">BACK</button>
+  <button class="btn red sm" onclick="goToMenu()">BACK</button>
 </div>
 
 <!-- LOBBY -->
@@ -191,8 +191,8 @@ input::placeholder{color:rgba(0,255,231,.3);}
   <div class="got" id="goT">ELIMINATED</div>
   <div class="gos" id="goS"></div>
   <div class="gob" id="goB"></div>
-  <button class="btn gold" onclick="openShop()">VISIT SHOP</button>
-  <button class="btn" onclick="showScr('sMenu')">MAIN MENU</button>
+  <button class="btn gold" onclick="goToMenu();openShop()">VISIT SHOP</button>
+  <button class="btn" onclick="goToMenu()">MAIN MENU</button>
 </div>
 
 <script>
@@ -892,7 +892,7 @@ function startGame(seed) {
 
   // Show game HUD
   document.getElementById('hud').style.display='flex';
-  document.getElementById('minimap').style.display='block';
+  document.getElementById('mm').style.display='block';
   document.getElementById('mm').style.display='block';
   document.getElementById('connSt').style.display='block';
   document.getElementById('joyL').style.display='block';
@@ -908,6 +908,11 @@ function startGame(seed) {
   animId=requestAnimationFrame(loop);
 }
 
+function goToMenu() {
+  stopGame();
+  showScr('sMenu');
+  updMenuStats();
+}
 function stopGame() {
   GS='menu';
   if (animId){cancelAnimationFrame(animId);animId=null;}
@@ -1467,14 +1472,7 @@ function hideGameHUD(){
   });
 }
 
-// ── showScr must also reset stopped game ──────────────
-// Wrap original showScr to stop game when going to menu
-const _showScr=showScr;
-window.showScr=function(id){
-  if(id==='sMenu'&&(GS==='playing'||GS==='dead'||GS==='won')) stopGame();
-  _showScr(id);
-  updMenuStats();
-};
+// showScr is defined above — game over buttons call goToMenu() instead
 
 // ── PWA ───────────────────────────────────────────────
 function setupPWA(){
@@ -1521,6 +1519,14 @@ function setupPWA(){
 }
 
 // ── Boot ──────────────────────────────────────────────
+window.onerror = function(msg, src, line, col, err) {
+  // Show error on screen for debugging
+  const d = document.createElement('div');
+  d.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#000;color:#f22;font-family:monospace;font-size:.8rem;padding:20px;z-index:9999;max-width:90vw;word-break:break-all;border:1px solid #f22;';
+  d.textContent = 'ERROR: ' + msg + ' (line ' + line + ')';
+  document.body.appendChild(d);
+  return false;
+};
 window.addEventListener('load',async()=>{
   resize();
   await initDB();
