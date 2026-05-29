@@ -68,20 +68,22 @@ input::placeholder{color:rgba(0,255,231,.3);}
 #aBar{width:100%;height:2px;background:rgba(0,150,255,.12);margin-top:1px;}
 #aFill{height:100%;background:#4af;}
 
-/* ── WEAPON BAR ── */
-#wBar{position:fixed;bottom:calc(148px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);
-  display:none;flex-direction:row;gap:4px;z-index:60;pointer-events:auto;touch-action:auto;}
-.ws{width:48px;height:48px;border:1px solid rgba(0,255,231,.3);background:var(--panel);
+/* ── WEAPON BAR — right side, vertical stack ── */
+#wBar{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom,0px));
+  right:calc(14px + env(safe-area-inset-right,0px));
+  display:none;flex-direction:column;gap:4px;z-index:60;pointer-events:auto;touch-action:auto;}
+.ws{width:54px;height:54px;border:1px solid rgba(0,255,231,.3);background:var(--panel);
   display:flex;flex-direction:column;align-items:center;justify-content:center;
-  font-size:.48rem;color:rgba(0,255,231,.5);position:relative;cursor:pointer;touch-action:auto;}
+  font-size:.46rem;color:rgba(0,255,231,.5);position:relative;cursor:pointer;touch-action:auto;}
 .ws.on{border-color:var(--neon);box-shadow:0 0 10px rgba(0,255,231,.4);color:var(--neon);}
 .ws:active{background:rgba(0,255,231,.15);}
-.wi{font-size:.95rem;margin-bottom:1px;}.wk{position:absolute;top:2px;left:3px;font-size:.42rem;color:var(--gold);}
+.wi{font-size:.9rem;margin-bottom:1px;}.wk{position:absolute;top:2px;left:3px;font-size:.4rem;color:var(--gold);}
 
-/* ── SWAP BTN ── */
-#swapBtn{position:fixed;bottom:calc(22px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);
-  width:62px;height:62px;border-radius:50%;background:rgba(255,215,0,.12);border:2px solid var(--gold);
-  color:var(--gold);font-size:.52rem;z-index:61;display:none;flex-direction:column;
+/* ── SWAP BTN — above weapon bar ── */
+#swapBtn{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom,0px));
+  right:calc(14px + env(safe-area-inset-right,0px));
+  width:54px;height:36px;border-radius:8px;background:rgba(255,215,0,.12);border:1px solid var(--gold);
+  color:var(--gold);font-size:.48rem;z-index:62;display:none;flex-direction:row;gap:3px;
   align-items:center;justify-content:center;cursor:pointer;touch-action:auto;pointer-events:auto;}
 #swapBtn:active{background:rgba(255,215,0,.4);}
 
@@ -112,12 +114,11 @@ input::placeholder{color:rgba(0,255,231,.3);}
 .dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:#888;margin-right:3px;}
 .dg{background:#0f8;}.dy{background:var(--gold);}.dr{background:var(--red);}
 
-/* ── ACTION BUTTONS (grenade / mine) ── */
-/* Positioned to the RIGHT of right joystick, stacked vertically */
+/* ── ACTION BUTTONS — left side, stacked ── */
 #actBtns{
   position:fixed;
   bottom:calc(20px + env(safe-area-inset-bottom,0px));
-  right:calc(140px + env(safe-area-inset-right,0px));
+  left:calc(14px + env(safe-area-inset-left,0px));
   display:none;flex-direction:column;gap:6px;z-index:61;pointer-events:auto;
 }
 .actBtn{
@@ -147,6 +148,26 @@ input::placeholder{color:rgba(0,255,231,.3);}
 .wdi .wdtag{position:absolute;top:3px;right:4px;font-size:.48rem;color:rgba(0,255,231,.4);}
 
 .scanline{position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.06) 2px,rgba(0,0,0,.06) 4px);pointer-events:none;z-index:999;}
+
+/* ── OPTIONS ── */
+.opt-row{display:flex;align-items:center;justify-content:space-between;
+  width:100%;max-width:360px;padding:9px 0;border-bottom:1px solid rgba(0,255,231,.1);}
+.opt-lbl{font-size:.75rem;letter-spacing:.1em;color:var(--neon);}
+.opt-desc{font-size:.55rem;color:rgba(0,255,231,.4);margin-top:2px;}
+.opt-ctrl{display:flex;align-items:center;gap:6px;flex-shrink:0;}
+.tog{width:44px;height:24px;border-radius:12px;background:rgba(0,255,231,.1);border:1px solid rgba(0,255,231,.3);
+  position:relative;cursor:pointer;touch-action:auto;flex-shrink:0;}
+.tog.on{background:rgba(0,255,231,.3);border-color:var(--neon);}
+.tog::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;
+  border-radius:50%;background:#888;transition:transform .2s,background .2s;}
+.tog.on::after{transform:translateX(20px);background:var(--neon);}
+.seg{display:flex;gap:3px;}
+.seg-btn{padding:4px 8px;border:1px solid rgba(0,255,231,.3);font-family:var(--f);
+  font-size:.6rem;color:rgba(0,255,231,.5);cursor:pointer;background:transparent;touch-action:auto;}
+.seg-btn.on{border-color:var(--neon);color:var(--neon);background:rgba(0,255,231,.1);}
+.seg-btn:active{background:rgba(0,255,231,.2);}
+.opt-section{font-size:.6rem;letter-spacing:.3em;color:rgba(0,255,231,.35);
+  margin:10px 0 4px;width:100%;max-width:360px;text-align:left;}
 </style>
 </head>
 <body>
@@ -162,6 +183,7 @@ input::placeholder{color:rgba(0,255,231,.3);}
   <button class="btn gold" onclick="soloRun()">SOLO RUN</button>
   <button class="btn" onclick="openShop()">UPGRADE SHOP</button>
   <button class="btn" onclick="openDealer()">WEAPONS DEALER</button>
+  <button class="btn" onclick="openOptions()">OPTIONS</button>
   <button class="btn" onclick="doHost()">HOST GAME</button>
   <button class="btn" onclick="toggleJoin()">JOIN GAME</button>
   <div id="joinSec" style="display:none;flex-direction:column;align-items:center;">
@@ -219,7 +241,7 @@ input::placeholder{color:rgba(0,255,231,.3);}
 <div id="exTimer"></div>
 <div id="joyL"><div class="jt" id="tL"></div></div>
 <div id="joyR"><div class="jt" id="tR"></div></div>
-<div id="swapBtn" onclick="cycleWep()"><span style="font-size:1.1rem;">🔄</span><span>SWAP</span></div>
+<div id="swapBtn" onclick="cycleWep()"><span style="font-size:1rem;">🔄</span></div>
 
 <!-- ACTION BUTTONS -->
 <div id="actBtns">
@@ -233,6 +255,83 @@ input::placeholder{color:rgba(0,255,231,.3);}
     <span class="aic">⚠</span>
     <span>MINE</span>
   </div>
+</div>
+
+<!-- OPTIONS SCREEN -->
+<div id="sOpts" class="scr" style="display:none;">
+  <div class="logo" style="font-size:1.3rem;margin-bottom:.4rem;">OPTIONS</div>
+
+  <div class="opt-section">CONTROLS</div>
+
+  <div class="opt-row">
+    <div><div class="opt-lbl">HAND</div><div class="opt-desc">Dominant hand for weapon bar</div></div>
+    <div class="opt-ctrl seg">
+      <button class="seg-btn" id="optHandL" onclick="setOpt('hand','left')">LEFT</button>
+      <button class="seg-btn" id="optHandR" onclick="setOpt('hand','right')">RIGHT</button>
+    </div>
+  </div>
+
+  <div class="opt-row">
+    <div><div class="opt-lbl">ACTION BTNS</div><div class="opt-desc">Grenade &amp; mine button side</div></div>
+    <div class="opt-ctrl seg">
+      <button class="seg-btn" id="optActL" onclick="setOpt('actSide','left')">LEFT</button>
+      <button class="seg-btn" id="optActR" onclick="setOpt('actSide','right')">RIGHT</button>
+    </div>
+  </div>
+
+  <div class="opt-row">
+    <div><div class="opt-lbl">SWAP BUTTON</div><div class="opt-desc">Weapon cycle button position</div></div>
+    <div class="opt-ctrl seg">
+      <button class="seg-btn" id="optSwapL" onclick="setOpt('swapSide','left')">LEFT</button>
+      <button class="seg-btn" id="optSwapM" onclick="setOpt('swapSide','mid')">MID</button>
+      <button class="seg-btn" id="optSwapR" onclick="setOpt('swapSide','right')">RIGHT</button>
+    </div>
+  </div>
+
+  <div class="opt-section">DISPLAY</div>
+
+  <div class="opt-row">
+    <div><div class="opt-lbl">SCANLINES</div><div class="opt-desc">CRT scanline overlay</div></div>
+    <div class="opt-ctrl">
+      <div class="tog" id="optScan" onclick="toggleOpt('scan')"></div>
+    </div>
+  </div>
+
+  <div class="opt-row">
+    <div><div class="opt-lbl">HUD SIZE</div><div class="opt-desc">Scale of HUD elements</div></div>
+    <div class="opt-ctrl seg">
+      <button class="seg-btn" id="optHudS" onclick="setOpt('hudSize','small')">S</button>
+      <button class="seg-btn" id="optHudM" onclick="setOpt('hudSize','mid')">M</button>
+      <button class="seg-btn" id="optHudL" onclick="setOpt('hudSize','large')">L</button>
+    </div>
+  </div>
+
+  <div class="opt-row">
+    <div><div class="opt-lbl">JOYSTICK SIZE</div><div class="opt-desc">Joystick diameter</div></div>
+    <div class="opt-ctrl seg">
+      <button class="seg-btn" id="optJoyS" onclick="setOpt('joySize','small')">S</button>
+      <button class="seg-btn" id="optJoyM" onclick="setOpt('joySize','mid')">M</button>
+      <button class="seg-btn" id="optJoyL" onclick="setOpt('joySize','large')">L</button>
+    </div>
+  </div>
+
+  <div class="opt-section">GAMEPLAY</div>
+
+  <div class="opt-row">
+    <div><div class="opt-lbl">AUTO-RELOAD</div><div class="opt-desc">Reload when ammo runs out</div></div>
+    <div class="opt-ctrl">
+      <div class="tog" id="optAutoR" onclick="toggleOpt('autoReload')"></div>
+    </div>
+  </div>
+
+  <div class="opt-row">
+    <div><div class="opt-lbl">AUTO-SHOOT</div><div class="opt-desc">Shoot when right joystick pushed</div></div>
+    <div class="opt-ctrl">
+      <div class="tog" id="optAutoS" onclick="toggleOpt('autoShoot')"></div>
+    </div>
+  </div>
+
+  <button class="btn red sm" style="margin-top:12px;" onclick="goToMenu()">BACK</button>
 </div>
 
 <!-- WEAPONS DEALER SCREEN -->
@@ -701,25 +800,27 @@ function initJoy() {
     for (const t of e.changedTouches) {
       let el=t.target, isUI=false;
       const ab=document.getElementById('actBtns');
-      while(el){if(el===sw||el===wb||el===ab){isUI=true;break;}el=el.parentElement;}
+      const sw2=document.getElementById('swapBtn');
+      while(el){if(el===sw||el===sw2||el===wb||el===ab){isUI=true;break;}el=el.parentElement;}
       if (isUI) continue;
       e.preventDefault();
       const half=window.innerWidth/2;
       const topQ=window.innerHeight*.38;
-      if (t.clientX<half && t.clientY>topQ && !jL.a) {
+      // Shrink usable joystick zone to avoid weapon bar / action buttons
+      const joyMarginH=80; // px from edges reserved for wBar/actBtns
+      const inJoyZone = t.clientY > topQ;
+      const inLeftZone  = t.clientX > joyMarginH && t.clientX < half;
+      const inRightZone = t.clientX >= half && t.clientX < window.innerWidth - joyMarginH;
+      if (inLeftZone && inJoyZone && !jL.a) {
         jL.a=true;jL.id=t.identifier;
         const r=eL.getBoundingClientRect();
         jL.sx=r.left+r.width/2; jL.sy=r.top+r.height/2;
         tL.style.boxShadow='0 0 16px rgba(0,255,231,.9)';
-      } else if (t.clientX>=half && t.clientY>topQ && !jR.a) {
-        const sr=sw.getBoundingClientRect();
-        const onSw=t.clientX>=sr.left-12&&t.clientX<=sr.right+12&&t.clientY>=sr.top-12&&t.clientY<=sr.bottom+12;
-        if (!onSw) {
-          jR.a=true;jR.id=t.identifier;
-          const r=eR.getBoundingClientRect();
-          jR.sx=r.left+r.width/2; jR.sy=r.top+r.height/2;
-          tR.style.boxShadow='0 0 16px rgba(0,255,231,.9)';
-        }
+      } else if (inRightZone && inJoyZone && !jR.a) {
+        jR.a=true;jR.id=t.identifier;
+        const r=eR.getBoundingClientRect();
+        jR.sx=r.left+r.width/2; jR.sy=r.top+r.height/2;
+        tR.style.boxShadow='0 0 16px rgba(0,255,231,.9)';
       }
     }
   },{passive:false});
@@ -924,7 +1025,7 @@ function soloRun() {
 }
 
 // ── Screen helpers ─────────────────────────────────────
-const SCREENS=['sMenu','sShop','sLobby','sOver','sDealer'];
+const SCREENS=['sMenu','sShop','sLobby','sOver','sDealer','sOpts'];
 function showScr(id) {
   SCREENS.forEach(s=>{
     const el=document.getElementById(s);
@@ -994,7 +1095,7 @@ function startGame(seed) {
   document.getElementById('swapBtn').style.display='flex';
   document.getElementById('actBtns').style.display='flex';
 
-  initJoy(); updWBar(); updHUD();
+  initJoy(); updWBar(); updHUD(); applyLayout();
   if (zoneTimer) clearInterval(zoneTimer);
   zoneTimer=setInterval(()=>{zoneTime--;updZoneT();if(zoneTime<=0)playerDead('ZONE');},1000);
   lastT=performance.now();
@@ -1046,7 +1147,7 @@ function update(dt) {
   moveSlide(lp, mx*spd, my*spd);
 
   // Right joystick = aim + shoot
-  if (jR.a&&(Math.abs(jR.dx)>.1||Math.abs(jR.dy)>.1)) {
+  if (opts.autoShoot && jR.a&&(Math.abs(jR.dx)>.1||Math.abs(jR.dy)>.1)) {
     lp.aimA=Math.atan2(jR.dy,jR.dx); doShoot();
   }
 
@@ -1100,7 +1201,7 @@ function update(dt) {
 function doShoot() {
   if(!lp||lp.dead||GS!=='playing') return;
   const w=curWep(); if(!w||w.reloading) return;
-  if(w.ammo<=0){doReload();return;}
+  if(w.ammo<=0){if(opts.autoReload)doReload();return;}
   if(shootCD>0) return;
   shootCD=w.fr; w.ammo--;
   const dmg=Math.round(w.dmg*calcDmg());
@@ -1533,6 +1634,8 @@ function updWBar(){
     d.addEventListener('touchend',e=>{e.preventDefault();e.stopPropagation();switchTo(i);},{passive:false});
     bar.appendChild(d);
   });
+  // Reapply layout so swap button stays correctly positioned
+  if(GS==='playing') applyLayout();
 }
 function updZoneT(){
   const m=Math.floor(zoneTime/60).toString().padStart(2,'0');
@@ -1725,6 +1828,144 @@ function applyDealerPurchases(player) {
   saveProf();
 }
 
+// ── Options & Layout ─────────────────────────────────
+const DEFAULT_OPTS = {
+  hand:       'right',  // weapon bar side
+  actSide:    'left',   // grenade/mine side
+  swapSide:   'right',  // swap button side
+  scan:       true,
+  hudSize:    'mid',
+  joySize:    'mid',
+  autoReload: true,
+  autoShoot:  true,
+};
+let opts = {...DEFAULT_OPTS};
+
+function loadOpts() {
+  try { const s=localStorage.getItem('exfilOpts'); if(s) opts={...DEFAULT_OPTS,...JSON.parse(s)}; } catch(_){}
+}
+function saveOpts() {
+  try { localStorage.setItem('exfilOpts',JSON.stringify(opts)); } catch(_){}
+}
+function setOpt(key, val) { opts[key]=val; saveOpts(); applyLayout(); renderOptUI(); }
+function toggleOpt(key) { opts[key]=!opts[key]; saveOpts(); applyLayout(); renderOptUI(); }
+
+function openOptions() { renderOptUI(); showScr('sOpts'); }
+
+function renderOptUI() {
+  // Hand
+  document.getElementById('optHandL').className='seg-btn'+(opts.hand==='left'?' on':'');
+  document.getElementById('optHandR').className='seg-btn'+(opts.hand==='right'?' on':'');
+  // Action side
+  document.getElementById('optActL').className='seg-btn'+(opts.actSide==='left'?' on':'');
+  document.getElementById('optActR').className='seg-btn'+(opts.actSide==='right'?' on':'');
+  // Swap side
+  document.getElementById('optSwapL').className='seg-btn'+(opts.swapSide==='left'?' on':'');
+  document.getElementById('optSwapM').className='seg-btn'+(opts.swapSide==='mid'?' on':'');
+  document.getElementById('optSwapR').className='seg-btn'+(opts.swapSide==='right'?' on':'');
+  // Toggles
+  document.getElementById('optScan').className='tog'+(opts.scan?' on':'');
+  document.getElementById('optAutoR').className='tog'+(opts.autoReload?' on':'');
+  document.getElementById('optAutoS').className='tog'+(opts.autoShoot?' on':'');
+  // HUD size
+  document.getElementById('optHudS').className='seg-btn'+(opts.hudSize==='small'?' on':'');
+  document.getElementById('optHudM').className='seg-btn'+(opts.hudSize==='mid'?' on':'');
+  document.getElementById('optHudL').className='seg-btn'+(opts.hudSize==='large'?' on':'');
+  // Joy size
+  document.getElementById('optJoyS').className='seg-btn'+(opts.joySize==='small'?' on':'');
+  document.getElementById('optJoyM').className='seg-btn'+(opts.joySize==='mid'?' on':'');
+  document.getElementById('optJoyL').className='seg-btn'+(opts.joySize==='large'?' on':'');
+}
+
+function applyLayout() {
+  const bot = 'calc(20px + env(safe-area-inset-bottom,0px))';
+  const saL = 'env(safe-area-inset-left,0px)';
+  const saR = 'env(safe-area-inset-right,0px)';
+
+  // ── Weapon bar (vertical, one side) ──
+  const wb = document.getElementById('wBar');
+  if (wb) {
+    wb.style.bottom = bot;
+    wb.style.flexDirection = 'column';
+    if (opts.hand === 'right') {
+      wb.style.right = `calc(14px + ${saR})`;
+      wb.style.left = '';
+    } else {
+      wb.style.left = `calc(14px + ${saL})`;
+      wb.style.right = '';
+    }
+  }
+
+  // ── Swap button — follows weapon bar side, sits above it ──
+  const sw = document.getElementById('swapBtn');
+  if (sw) {
+    if (opts.swapSide === 'mid') {
+      sw.style.left = '50%';
+      sw.style.right = '';
+      sw.style.transform = 'translateX(-50%)';
+      sw.style.bottom = bot;
+    } else if (opts.swapSide === 'right') {
+      sw.style.right = `calc(14px + ${saR})`;
+      sw.style.left = '';
+      sw.style.transform = '';
+      // Position above weapon bar: wBar has n slots of 54+4px each
+      const slots = (lp ? lp.weps.length : 1);
+      sw.style.bottom = `calc(${20 + slots * 58 + 6}px + env(safe-area-inset-bottom,0px))`;
+    } else {
+      sw.style.left = `calc(14px + ${saL})`;
+      sw.style.right = '';
+      sw.style.transform = '';
+      const slots = (lp ? lp.weps.length : 1);
+      sw.style.bottom = `calc(${20 + slots * 58 + 6}px + env(safe-area-inset-bottom,0px))`;
+    }
+  }
+
+  // ── Action buttons ──
+  const ab = document.getElementById('actBtns');
+  if (ab) {
+    ab.style.bottom = bot;
+    if (opts.actSide === 'left') {
+      ab.style.left = `calc(14px + ${saL})`;
+      ab.style.right = '';
+    } else {
+      ab.style.right = `calc(14px + ${saR})`;
+      ab.style.left = '';
+    }
+  }
+
+  // ── Joystick size ──
+  const joyPx = {small:88, mid:110, large:132}[opts.joySize] || 110;
+  const thumbPx = Math.round(joyPx * .38);
+  ['joyL','joyR'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.style.width  = joyPx + 'px';
+    el.style.height = joyPx + 'px';
+  });
+  document.querySelectorAll('.jt').forEach(el => {
+    el.style.width  = thumbPx + 'px';
+    el.style.height = thumbPx + 'px';
+  });
+
+  // ── HUD scale ──
+  const hudScale = {small:'.82', mid:'1', large:'1.18'}[opts.hudSize] || '1';
+  const hud = document.getElementById('hud');
+  if (hud) hud.style.transform = `scale(${hudScale})`;
+  if (hud) hud.style.transformOrigin = 'top left';
+
+  // ── Scanlines ──
+  const sl = document.querySelector('.scanline');
+  if (sl) sl.style.display = opts.scan ? '' : 'none';
+
+  // ── Joystick left side — if weapon bar is left, nudge joystick inward ──
+  const jL2 = document.getElementById('joyL');
+  const jR2 = document.getElementById('joyR');
+  if (jL2 && jR2) {
+    // Joysticks stay at their fixed left/right — action buttons / wBar stack above them visually
+    // No repositioning needed since they're separate elements
+  }
+}
+
 // ── Boot ──────────────────────────────────────────────
 window.onerror = function(msg, src, line, col, err) {
   // Show error on screen for debugging
@@ -1736,6 +1977,9 @@ window.onerror = function(msg, src, line, col, err) {
 };
 window.addEventListener('load',async()=>{
   resize();
+  loadOpts();
+  applyLayout();
+  renderOptUI();
   await initDB();
   await loadProf();
   setupPWA();
