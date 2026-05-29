@@ -184,12 +184,7 @@ input::placeholder{color:rgba(0,255,231,.3);}
   <button class="btn" onclick="openShop()">UPGRADE SHOP</button>
   <button class="btn" onclick="openDealer()">WEAPONS DEALER</button>
   <button class="btn" onclick="openOptions()">OPTIONS</button>
-  <button class="btn" onclick="doHost()">HOST GAME</button>
-  <button class="btn" onclick="toggleJoin()">JOIN GAME</button>
-  <div id="joinSec" style="display:none;flex-direction:column;align-items:center;">
-    <input id="iCode" placeholder="ROOM CODE" maxlength="8" style="text-transform:uppercase;margin-top:4px;">
-    <button class="btn" onclick="doJoin()">CONNECT</button>
-  </div>
+  <!-- Multiplayer coming soon -->
   <div id="mStats" style="margin-top:.9rem;font-size:.65rem;color:rgba(0,255,231,.35);text-align:center;"></div>
 </div>
 
@@ -254,6 +249,11 @@ input::placeholder{color:rgba(0,255,231,.3);}
     <span class="acnt" id="mneCnt">0</span>
     <span class="aic">⚠</span>
     <span>MINE</span>
+  </div>
+  <div class="actBtn" id="btnTurret" onclick="placeTurret()" style="border-color:#0fe;color:#0fe;">
+    <span class="acnt" id="turCnt">0</span>
+    <span class="aic">🗼</span>
+    <span>TURRET</span>
   </div>
 </div>
 
@@ -744,6 +744,7 @@ function applyAddon(key) {
     case 'medkit':  lp.hp=Math.min(lp.hp+60,lp.maxHP); popup('+60 HP'); break;
     case 'stim':    lp.timers.stim+=10;  popup('STIM 10s'); break;
     case 'xray':    lp.timers.xray+=15;  popup('THERMAL 15s'); break;
+    case 'turret':  lp.addons.turrets=(lp.addons.turrets||0)+1; popup('TURRET READY [T]'); break;
   }
   updActBtns();
 }
@@ -908,6 +909,8 @@ function initJoy() {
     },{passive:false});
   }
   if(btnM) btnM.addEventListener('touchend',e=>{e.preventDefault();e.stopPropagation();placeMine();},{passive:false});
+  const btnT=document.getElementById('btnTurret');
+  if(btnT) btnT.addEventListener('touchend',e=>{e.preventDefault();e.stopPropagation();placeTurret();},{passive:false});
 }
 
 // ── Keyboard ──────────────────────────────────────────
@@ -920,6 +923,7 @@ document.addEventListener('keydown',e=>{
   if(e.code==='KeyQ') cycleWep();
   if(e.code==='KeyG') throwGrenade();
   if(e.code==='KeyM'||e.code==='KeyV') placeMine();
+  if(e.code==='KeyT') placeTurret();
   if(e.code==='Digit1') switchTo(0);
   if(e.code==='Digit2') switchTo(1);
   if(e.code==='Digit3') switchTo(2);
@@ -1163,13 +1167,81 @@ function goToMenu() {
   showScr('sMenu');
   updMenuStats();
 }
+
+// ── Auto Turret ───────────────────────────────────────
+let turrets = [];
+
+function placeTurret() {
+  if (!lp||lp.dead||!(lp.addons.turrets>0)) return;
+  lp.addons.turrets--;
+  turrets.push({x:lp.x, y:lp.y, life:15, shootCD:0, angle:0, armTimer:0.6});
+  updActBtns();
+  popup('TURRET PLACED (' + (lp.addons.turrets) + ' left)');
+}
+
+function updTurrets(dt) {
+  for (let i=turrets.length-1; i>=0; i--) {
+    const tu=turrets[i];
+    tu.life -= dt;
+    if (tu.life <= 0) { spawnPart(tu.x,tu.y,'#0fe',10); turrets.splice(i,1); continue; }
+    if (tu.armTimer > 0) { tu.armTimer -= dt; continue; }
+    tu.shootCD -= dt;
+    // Find nearest visible enemy
+    let target=null, td=Infinity;
+    for (const en of enemies) {
+      if (en.hp<=0) continue;
+      const d=Math.hypot(en.x-tu.x,en.y-tu.y);
+      if (d<220 && d<td && hasLOS(tu.x,tu.y,en.x,en.y)) { td=d; target=en; }
+    }
+    if (target) {
+      tu.angle = Math.atan2(target.y-tu.y, target.x-tu.x);
+      if (tu.shootCD <= 0) {
+        tu.shootCD = 0.35;
+        bullets.push({
+          x:tu.x, y:tu.y,
+          vx:Math.cos(tu.angle)*480, vy:Math.sin(tu.angle)*480,
+          ownerId:'turret', isTurret:true,
+          life:1.4, rng:1.4, radius:4, col:'#0fe', dmg:20,
+          isEnemy:false
+        });
+      }
+    }
+  }
+}
+
+function drawTurrets() {
+  const ts=Date.now()*.003;
+  for (const tu of turrets) {
+    const lr=tu.life/15;
+    const pulse=Math.sin(ts*3)*.15+.85;
+    gx.shadowBlur=0;
+    // Base circle
+    gx.beginPath(); gx.arc(tu.x,tu.y,11,0,Math.PI*2);
+    gx.fillStyle='rgba(0,'+(Math.floor(160*lr))+','+(Math.floor(200*lr))+','+((.7*pulse).toFixed(2))+')';
+    gx.fill();
+    gx.strokeStyle=lr>.3?'#0fe':'#f84'; gx.lineWidth=2; gx.stroke();
+    // Barrel
+    const bx=tu.x+Math.cos(tu.angle)*15, by=tu.y+Math.sin(tu.angle)*15;
+    gx.beginPath(); gx.moveTo(tu.x,tu.y); gx.lineTo(bx,by);
+    gx.strokeStyle='#0fe'; gx.lineWidth=3; gx.stroke();
+    gx.beginPath(); gx.arc(bx,by,3,0,Math.PI*2);
+    gx.fillStyle='#0fe'; gx.fill();
+    // Life bar
+    gx.fillStyle='rgba(0,0,0,.5)'; gx.fillRect(tu.x-12,tu.y-18,24,3);
+    gx.fillStyle=lr>.5?'#0fe':'#f84'; gx.fillRect(tu.x-12,tu.y-18,24*lr,3);
+    // Timer
+    gx.font='7px monospace'; gx.textAlign='center';
+    gx.fillStyle='rgba(0,255,231,.8)'; gx.fillText(Math.ceil(tu.life)+'s',tu.x,tu.y+4);
+  }
+}
+
 function stopGame() {
   GS='menu';
   if (animId){cancelAnimationFrame(animId);animId=null;}
   if (zoneTimer){clearInterval(zoneTimer);zoneTimer=null;}
   if (sigWs)try{sigWs.close();}catch(_){}
   sigWs=null; rtcPeers={}; rtcDCs={}; lobbyPeers={};
-  lp=null; pOther={}; enemies=[]; bullets=[]; loot=[]; grenades=[]; mines=[]; parts=[];
+  lp=null; pOther={}; enemies=[]; bullets=[]; loot=[]; grenades=[]; mines=[]; parts=[]; turrets=[];
   sessionLoot=0; sessionKills=0;
   ['hud','minimap','mm','connSt','joyL','joyR','wBar','actBtns','exTimer'].forEach(id=>{
     const el=document.getElementById(id); if(el)el.style.display='none';
@@ -1223,6 +1295,7 @@ function update(dt) {
   updEnemies(dt);
   updBullets(dt);
   updGrenadesMines(dt);
+  updTurrets(dt);
 
   // Particles
   for(let i=parts.length-1;i>=0;i--){
@@ -1342,6 +1415,16 @@ function updBullets(dt) {
           bcast({type:'hit',tid:p.id,src:myId,dmg:b.dmg});
       });
     }
+    if(b.isTurret){
+      for(let j2=enemies.length-1;j2>=0;j2--){
+        const en2=enemies[j2];if(en2.hp<=0)continue;
+        if(Math.hypot(b.x-en2.x,b.y-en2.y)<en2.radius+b.radius){
+          en2.hp-=b.dmg;spawnPart(en2.x,en2.y,en2.col,6);bullets.splice(i,1);
+          if(en2.hp<=0)killEnemy(en2);break;
+        }
+      }
+      continue;
+    }
     if(b.isEnemy&&lp&&!lp.dead){
       if(Math.hypot(b.x-lp.x,b.y-lp.y)<lp.radius+b.radius){
         takeDmg(b.dmg); bullets.splice(i,1);
@@ -1406,6 +1489,7 @@ function draw() {
   drawEnemies();
   drawBullets();
   drawGrenadesMines();
+  drawTurrets();
   drawGrenDragArc();
   drawParts();
   drawPlayers();
@@ -1455,6 +1539,7 @@ function drawExZone() {
 
 function drawLoot() {
   const ts=Date.now();
+  for(const tu of turrets){mx.beginPath();mx.arc(tu.x*sx,tu.y*sy,3,0,Math.PI*2);mx.fillStyle='#0fe';mx.fill();}
   for(const l of loot){
     if(l.done) continue;
     const bob=Math.sin(ts*.003+l.x)*3;
@@ -1841,7 +1926,8 @@ const DEALER_STOCK = [
   {key:'grenade',name:'GRENADES',icon:'💣',ammo:false, price:90,  desc:'x2 grenades'},
   {key:'mine',   name:'MINES',  icon:'⚠', ammo:false, price:80,  desc:'x2 proximity mines'},
   {key:'laser',  name:'LASER SIGHT',icon:'🔴',ammo:false,price:110,desc:'Tight spread + dot'},
-  {key:'stim',   name:'STIM SHOT',icon:'⚡',ammo:false,price:90,  desc:'+50% speed 15s'},
+  {key:'stim',   name:'STIM SHOT',  icon:'⚡', ammo:false,price:90,  desc:'+50% speed 15s'},
+  {key:'turret',  name:'AUTO TURRET',icon:'🗼', ammo:false,price:180, desc:'Place turret - shoots enemies 15s'},
 ];
 
 let dealerSeed = 0; // randomize stock per run
@@ -1882,7 +1968,8 @@ function dealerBuy(item) {
     case 'grenade': prof.dealerGren = (prof.dealerGren||0)+2; break;
     case 'mine':    prof.dealerMine = (prof.dealerMine||0)+2; break;
     case 'laser':   prof.dealerLaser= true; break;
-    case 'stim':    prof.dealerStim = (prof.dealerStim||0)+15; break;
+    case 'stim':    prof.dealerStim   = (prof.dealerStim||0)+15; break;
+    case 'turret':  prof.dealerTurret = (prof.dealerTurret||0)+1; break;
     default: // weapon key
       if (!prof.dealerWeps) prof.dealerWeps=[];
       const existing=prof.dealerWeps.findIndex(w=>w.key===item.key);
@@ -1908,7 +1995,8 @@ function applyDealerPurchases(player) {
   if (prof.dealerGren)  { player.addons.grenades+=prof.dealerGren; }
   if (prof.dealerMine)  { player.addons.mines+=prof.dealerMine; }
   if (prof.dealerLaser) { player.addons.laser=true; }
-  if (prof.dealerStim)  { player.timers.stim+=prof.dealerStim; }
+  if (prof.dealerStim)   { player.timers.stim+=prof.dealerStim; }
+  if (prof.dealerTurret) { player.addons.turrets=(player.addons.turrets||0)+prof.dealerTurret; }
   // Ammo pack refills current weapon
   if (prof.dealerAmmo&&player.weps.length) {
     const w=player.weps[player.wi||0];
@@ -1917,7 +2005,7 @@ function applyDealerPurchases(player) {
   // Clear dealer items (consumed at run start)
   prof.dealerWeps=[]; prof.dealerAmmo=0; prof.dealerHP=0;
   prof.dealerArmor=0; prof.dealerGren=0; prof.dealerMine=0;
-  prof.dealerLaser=false; prof.dealerStim=0;
+  prof.dealerLaser=false; prof.dealerStim=0; prof.dealerTurret=0;
   saveProf();
 }
 
