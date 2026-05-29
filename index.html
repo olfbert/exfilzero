@@ -68,23 +68,34 @@ input::placeholder{color:rgba(0,255,231,.3);}
 #aBar{width:100%;height:2px;background:rgba(0,150,255,.12);margin-top:1px;}
 #aFill{height:100%;background:#4af;}
 
-/* ── WEAPON BAR — right side, vertical stack ── */
-#wBar{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom,0px));
-  right:calc(14px + env(safe-area-inset-right,0px));
-  display:none;flex-direction:column;gap:4px;z-index:60;pointer-events:auto;touch-action:auto;}
-.ws{width:54px;height:54px;border:1px solid rgba(0,255,231,.3);background:var(--panel);
+/* ── WEAPON BAR — right side, vertically centred ── */
+#wBar{
+  position:fixed;
+  top:50%; right:calc(6px + env(safe-area-inset-right,0px));
+  transform:translateY(-50%);
+  display:none;flex-direction:column;gap:4px;
+  z-index:60;pointer-events:auto;touch-action:auto;
+}
+.ws{
+  width:52px;height:52px;border:1px solid rgba(0,255,231,.3);background:var(--panel);
   display:flex;flex-direction:column;align-items:center;justify-content:center;
-  font-size:.46rem;color:rgba(0,255,231,.5);position:relative;cursor:pointer;touch-action:auto;}
+  font-size:.44rem;color:rgba(0,255,231,.5);position:relative;cursor:pointer;touch-action:auto;
+}
 .ws.on{border-color:var(--neon);box-shadow:0 0 10px rgba(0,255,231,.4);color:var(--neon);}
 .ws:active{background:rgba(0,255,231,.15);}
-.wi{font-size:.9rem;margin-bottom:1px;}.wk{position:absolute;top:2px;left:3px;font-size:.4rem;color:var(--gold);}
+.wi{font-size:.88rem;margin-bottom:1px;}.wk{position:absolute;top:2px;left:3px;font-size:.38rem;color:var(--gold);}
 
-/* ── SWAP BTN — above weapon bar ── */
-#swapBtn{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom,0px));
-  right:calc(14px + env(safe-area-inset-right,0px));
-  width:54px;height:36px;border-radius:8px;background:rgba(255,215,0,.12);border:1px solid var(--gold);
-  color:var(--gold);font-size:.48rem;z-index:62;display:none;flex-direction:row;gap:3px;
-  align-items:center;justify-content:center;cursor:pointer;touch-action:auto;pointer-events:auto;}
+/* ── SWAP BTN — below weapon bar, same side ── */
+#swapBtn{
+  position:fixed;
+  top:50%; right:calc(6px + env(safe-area-inset-right,0px));
+  transform:translateY(-50%);   /* overridden by applyLayout */
+  width:52px;height:30px;border-radius:6px;
+  background:rgba(255,215,0,.12);border:1px solid var(--gold);
+  color:var(--gold);font-size:.44rem;z-index:62;display:none;
+  flex-direction:row;gap:2px;align-items:center;justify-content:center;
+  cursor:pointer;touch-action:auto;pointer-events:auto;
+}
 #swapBtn:active{background:rgba(255,215,0,.4);}
 
 /* ── JOYSTICKS ── */
@@ -114,26 +125,26 @@ input::placeholder{color:rgba(0,255,231,.3);}
 .dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:#888;margin-right:3px;}
 .dg{background:#0f8;}.dy{background:var(--gold);}.dr{background:var(--red);}
 
-/* ── ACTION BUTTONS — left side, stacked ── */
+/* ── ACTION BUTTONS — left side, vertically centred ── */
 #actBtns{
   position:fixed;
-  bottom:calc(20px + env(safe-area-inset-bottom,0px));
-  left:calc(14px + env(safe-area-inset-left,0px));
+  top:50%; left:calc(6px + env(safe-area-inset-left,0px));
+  transform:translateY(-50%);
   display:none;flex-direction:column;gap:6px;z-index:61;pointer-events:auto;
 }
 .actBtn{
-  width:56px;height:56px;border-radius:10px;border:2px solid;
+  width:52px;height:52px;border-radius:10px;border:2px solid;
   background:rgba(0,0,0,.6);display:flex;flex-direction:column;align-items:center;
-  justify-content:center;cursor:pointer;font-size:.48rem;letter-spacing:.04em;
+  justify-content:center;cursor:pointer;font-size:.46rem;letter-spacing:.04em;
   touch-action:auto;pointer-events:auto;position:relative;
 }
 .actBtn:active{background:rgba(255,255,255,.15);}
 .actBtn.grn{border-color:#fa0;color:#fa0;}
 .actBtn.mne{border-color:#ff0;color:#ff0;}
-.actBtn .aic{font-size:1.3rem;line-height:1;}
+.actBtn .aic{font-size:1.25rem;line-height:1;}
 .actBtn .acnt{
   position:absolute;top:2px;right:4px;
-  font-size:.65rem;font-weight:700;color:inherit;
+  font-size:.62rem;font-weight:700;color:inherit;
 }
 
 /* ── WEAPONS DEALER ── */
@@ -805,12 +816,13 @@ function initJoy() {
       if (isUI) continue;
       e.preventDefault();
       const half=window.innerWidth/2;
-      const topQ=window.innerHeight*.38;
-      // Shrink usable joystick zone to avoid weapon bar / action buttons
-      const joyMarginH=80; // px from edges reserved for wBar/actBtns
+      const topQ=window.innerHeight*.40;
       const inJoyZone = t.clientY > topQ;
-      const inLeftZone  = t.clientX > joyMarginH && t.clientX < half;
-      const inRightZone = t.clientX >= half && t.clientX < window.innerWidth - joyMarginH;
+      // Edge margin: wBar/actBtns are 52+6=58px wide, centred vertically → safe at bottom
+      // Reserve 66px from each edge to avoid the side panels
+      const edgeMargin=66;
+      const inLeftZone  = t.clientX >= edgeMargin && t.clientX < half;
+      const inRightZone = t.clientX >= half && t.clientX < window.innerWidth - edgeMargin;
       if (inLeftZone && inJoyZone && !jL.a) {
         jL.a=true;jL.id=t.identifier;
         const r=eL.getBoundingClientRect();
@@ -1878,63 +1890,75 @@ function renderOptUI() {
 }
 
 function applyLayout() {
-  const bot = 'calc(20px + env(safe-area-inset-bottom,0px))';
   const saL = 'env(safe-area-inset-left,0px)';
   const saR = 'env(safe-area-inset-right,0px)';
 
-  // ── Weapon bar (vertical, one side) ──
+  // ── Weapon bar: vertically centred, left or right edge ──
   const wb = document.getElementById('wBar');
   if (wb) {
-    wb.style.bottom = bot;
+    const slots  = lp ? lp.weps.length : 1;
+    // total height of slots + swap btn
+    const totalH = slots * 56 + 34 + 8; // slots*(h+gap) + swapH + gap
+    // vertical centre offset so the group is centred
+    const offY   = Math.round(totalH / 2);
+
+    wb.style.top    = '50%';
+    wb.style.bottom = '';
     wb.style.flexDirection = 'column';
+
     if (opts.hand === 'right') {
-      wb.style.right = `calc(14px + ${saR})`;
-      wb.style.left = '';
+      wb.style.right  = `calc(6px + ${saR})`;
+      wb.style.left   = '';
     } else {
-      wb.style.left = `calc(14px + ${saL})`;
-      wb.style.right = '';
+      wb.style.left   = `calc(6px + ${saL})`;
+      wb.style.right  = '';
     }
+    // wBar starts slightly above centre so swap btn below sits centred overall
+    wb.style.transform = `translateY(calc(-50% + ${Math.round(34/2+4)}px))`;
   }
 
-  // ── Swap button — follows weapon bar side, sits above it ──
+  // ── Swap button: same edge as wBar, just below the weapon slots ──
   const sw = document.getElementById('swapBtn');
   if (sw) {
+    const slots  = lp ? lp.weps.length : 1;
+    const slotsH = slots * 56 + (slots-1) * 4; // slots * (h+gap) - last gap
+
+    sw.style.bottom  = '';
+    sw.style.transform = '';
+
     if (opts.swapSide === 'mid') {
-      sw.style.left = '50%';
-      sw.style.right = '';
+      sw.style.left    = '50%';
+      sw.style.right   = '';
+      sw.style.top     = `calc(50% + ${Math.round(slotsH/2) + 8}px)`;
       sw.style.transform = 'translateX(-50%)';
-      sw.style.bottom = bot;
     } else if (opts.swapSide === 'right') {
-      sw.style.right = `calc(14px + ${saR})`;
-      sw.style.left = '';
-      sw.style.transform = '';
-      // Position above weapon bar: wBar has n slots of 54+4px each
-      const slots = (lp ? lp.weps.length : 1);
-      sw.style.bottom = `calc(${20 + slots * 58 + 6}px + env(safe-area-inset-bottom,0px))`;
+      sw.style.right   = `calc(6px + ${saR})`;
+      sw.style.left    = '';
+      sw.style.top     = `calc(50% + ${Math.round(slotsH/2) + 8}px)`;
     } else {
-      sw.style.left = `calc(14px + ${saL})`;
-      sw.style.right = '';
-      sw.style.transform = '';
-      const slots = (lp ? lp.weps.length : 1);
-      sw.style.bottom = `calc(${20 + slots * 58 + 6}px + env(safe-area-inset-bottom,0px))`;
+      sw.style.left    = `calc(6px + ${saL})`;
+      sw.style.right   = '';
+      sw.style.top     = `calc(50% + ${Math.round(slotsH/2) + 8}px)`;
     }
   }
 
-  // ── Action buttons ──
+  // ── Action buttons: vertically centred, left or right edge ──
   const ab = document.getElementById('actBtns');
   if (ab) {
-    ab.style.bottom = bot;
+    ab.style.top    = '50%';
+    ab.style.bottom = '';
+    ab.style.transform = 'translateY(-50%)';
     if (opts.actSide === 'left') {
-      ab.style.left = `calc(14px + ${saL})`;
+      ab.style.left  = `calc(6px + ${saL})`;
       ab.style.right = '';
     } else {
-      ab.style.right = `calc(14px + ${saR})`;
-      ab.style.left = '';
+      ab.style.right = `calc(6px + ${saR})`;
+      ab.style.left  = '';
     }
   }
 
   // ── Joystick size ──
-  const joyPx = {small:88, mid:110, large:132}[opts.joySize] || 110;
+  const joyPx   = {small:90, mid:110, large:132}[opts.joySize] || 110;
   const thumbPx = Math.round(joyPx * .38);
   ['joyL','joyR'].forEach(id => {
     const el = document.getElementById(id);
@@ -1950,20 +1974,11 @@ function applyLayout() {
   // ── HUD scale ──
   const hudScale = {small:'.82', mid:'1', large:'1.18'}[opts.hudSize] || '1';
   const hud = document.getElementById('hud');
-  if (hud) hud.style.transform = `scale(${hudScale})`;
-  if (hud) hud.style.transformOrigin = 'top left';
+  if (hud) { hud.style.transform = `scale(${hudScale})`; hud.style.transformOrigin = 'top left'; }
 
   // ── Scanlines ──
   const sl = document.querySelector('.scanline');
   if (sl) sl.style.display = opts.scan ? '' : 'none';
-
-  // ── Joystick left side — if weapon bar is left, nudge joystick inward ──
-  const jL2 = document.getElementById('joyL');
-  const jR2 = document.getElementById('joyR');
-  if (jL2 && jR2) {
-    // Joysticks stay at their fixed left/right — action buttons / wBar stack above them visually
-    // No repositioning needed since they're separate elements
-  }
 }
 
 // ── Boot ──────────────────────────────────────────────
