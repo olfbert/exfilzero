@@ -58,11 +58,11 @@ input::placeholder{color:rgba(0,255,231,.3);}
 .si .lv{position:absolute;top:3px;right:4px;font-size:.5rem;color:rgba(255,215,0,.55);}
 
 /* ── HUD ── */
-#hud{position:fixed;top:0;left:0;right:0;padding:7px 9px;display:none;
+#hud{position:fixed;top:0;left:0;right:0;padding:5px 7px;display:none;
   align-items:flex-start;justify-content:space-between;pointer-events:none;z-index:10;}
-.hp{background:var(--panel);border:1px solid rgba(0,255,231,.3);padding:5px 8px;min-width:96px;}
-.hl{font-size:.48rem;letter-spacing:.28em;color:rgba(0,255,231,.5);margin-bottom:1px;}
-.hv{font-size:.82rem;font-weight:700;}
+.hp{background:var(--panel);border:1px solid rgba(0,255,231,.3);padding:4px 7px;min-width:88px;}
+.hl{font-size:.44rem;letter-spacing:.22em;color:rgba(0,255,231,.5);margin-bottom:1px;}
+.hv{font-size:.78rem;font-weight:700;}
 #hBar{width:100%;height:3px;background:rgba(255,42,42,.2);margin-top:2px;}
 #hFill{height:100%;background:var(--red);box-shadow:0 0 5px var(--red);}
 #aBar{width:100%;height:2px;background:rgba(0,150,255,.12);margin-top:1px;}
@@ -70,10 +70,10 @@ input::placeholder{color:rgba(0,255,231,.3);}
 
 /* ── WEAPON BAR ── */
 #wBar{position:fixed;bottom:calc(148px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);
-  display:none;flex-direction:row;gap:5px;z-index:60;pointer-events:auto;touch-action:auto;}
-.ws{width:52px;height:52px;border:1px solid rgba(0,255,231,.3);background:var(--panel);
+  display:none;flex-direction:row;gap:4px;z-index:60;pointer-events:auto;touch-action:auto;}
+.ws{width:48px;height:48px;border:1px solid rgba(0,255,231,.3);background:var(--panel);
   display:flex;flex-direction:column;align-items:center;justify-content:center;
-  font-size:.52rem;color:rgba(0,255,231,.5);position:relative;cursor:pointer;touch-action:auto;}
+  font-size:.48rem;color:rgba(0,255,231,.5);position:relative;cursor:pointer;touch-action:auto;}
 .ws.on{border-color:var(--neon);box-shadow:0 0 10px rgba(0,255,231,.4);color:var(--neon);}
 .ws:active{background:rgba(0,255,231,.15);}
 .wi{font-size:.95rem;margin-bottom:1px;}.wk{position:absolute;top:2px;left:3px;font-size:.42rem;color:var(--gold);}
@@ -100,12 +100,12 @@ input::placeholder{color:rgba(0,255,231,.3);}
 #popup{position:fixed;bottom:calc(218px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);
   background:var(--panel);border:1px solid var(--gold);color:var(--gold);
   padding:5px 14px;font-size:.72rem;z-index:22;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap;}
-#minimap{position:fixed;top:8px;right:8px;border:1px solid rgba(0,255,231,.3);
+#minimap{position:fixed;top:80px;right:8px;border:1px solid rgba(0,255,231,.3);
   background:rgba(0,10,15,.85);z-index:10;display:none;}
 #exTimer{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
   font-size:1.4rem;color:var(--gold);text-shadow:0 0 18px var(--gold);
   z-index:30;display:none;text-align:center;pointer-events:none;}
-#kfeed{position:fixed;right:128px;top:8px;z-index:20;pointer-events:none;}
+#kfeed{position:fixed;left:8px;top:80px;z-index:20;pointer-events:none;}
 .kf{background:rgba(255,42,42,.13);border-left:2px solid var(--red);padding:2px 7px;font-size:.65rem;margin-bottom:2px;}
 #connSt{position:fixed;bottom:calc(148px + env(safe-area-inset-bottom,0px));right:9px;
   font-size:.58rem;color:rgba(0,255,231,.4);z-index:20;display:none;}
@@ -113,17 +113,27 @@ input::placeholder{color:rgba(0,255,231,.3);}
 .dg{background:#0f8;}.dy{background:var(--gold);}.dr{background:var(--red);}
 
 /* ── ACTION BUTTONS (grenade / mine) ── */
-#actBtns{position:fixed;bottom:calc(22px + env(safe-area-inset-bottom,0px));
-  left:calc(140px + env(safe-area-inset-left,0px));
-  display:none;flex-direction:column;gap:6px;z-index:61;pointer-events:auto;}
-.actBtn{width:54px;height:54px;border-radius:10px;border:2px solid;
-  background:rgba(0,0,0,.5);display:flex;flex-direction:column;align-items:center;
-  justify-content:center;cursor:pointer;font-size:.5rem;letter-spacing:.04em;touch-action:auto;pointer-events:auto;}
-.actBtn:active{opacity:.6;}
+/* Positioned to the RIGHT of right joystick, stacked vertically */
+#actBtns{
+  position:fixed;
+  bottom:calc(20px + env(safe-area-inset-bottom,0px));
+  right:calc(140px + env(safe-area-inset-right,0px));
+  display:none;flex-direction:column;gap:6px;z-index:61;pointer-events:auto;
+}
+.actBtn{
+  width:56px;height:56px;border-radius:10px;border:2px solid;
+  background:rgba(0,0,0,.6);display:flex;flex-direction:column;align-items:center;
+  justify-content:center;cursor:pointer;font-size:.48rem;letter-spacing:.04em;
+  touch-action:auto;pointer-events:auto;position:relative;
+}
+.actBtn:active{background:rgba(255,255,255,.15);}
 .actBtn.grn{border-color:#fa0;color:#fa0;}
 .actBtn.mne{border-color:#ff0;color:#ff0;}
-.actBtn .aic{font-size:1.2rem;}
-.actBtn .acnt{font-size:.6rem;position:absolute;top:3px;right:5px;color:inherit;}
+.actBtn .aic{font-size:1.3rem;line-height:1;}
+.actBtn .acnt{
+  position:absolute;top:2px;right:4px;
+  font-size:.65rem;font-weight:700;color:inherit;
+}
 
 /* ── WEAPONS DEALER ── */
 #sDealer{overflow-y:auto;}
@@ -375,78 +385,58 @@ function rnd() { rngS = (rngS * 1664525 + 1013904223) & 0xffffffff; return (rngS
 // Tiles: 0=floor 1=wall 2=crate 4=extraction
 function genMap(seed) {
   rngS = seed | 0;
+  // Start all walls
   map = [];
-  for (let y = 0; y < MH; y++) {
-    map[y] = [];
-    for (let x = 0; x < MW; x++) {
-      if (x===0||y===0||x===MW-1||y===MH-1) { map[y][x]=1; continue; }
-      const r = rnd();
-      map[y][x] = r < .10 ? 1 : r < .15 ? 2 : 0;
+  for (let y=0;y<MH;y++){map[y]=[];for(let x=0;x<MW;x++) map[y][x]=1;}
+
+  // BSP: place rooms then connect them with corridors
+  const rooms=[];
+  for(let i=0;i<20;i++){
+    const rw=Math.floor(rnd()*8)+5;   // 5-12 wide
+    const rh=Math.floor(rnd()*7)+4;   // 4-10 tall
+    const rx=Math.floor(rnd()*(MW-rw-2))+1;
+    const ry=Math.floor(rnd()*(MH-rh-2))+1;
+    // Check no overlap with existing rooms (allow small overlap)
+    let ok=true;
+    for(const r of rooms)
+      if(rx<r.x+r.w+2&&rx+rw>r.x-2&&ry<r.y+r.h+2&&ry+rh>r.y-2){ok=false;break;}
+    if(!ok) continue;
+    rooms.push({x:rx,y:ry,w:rw,h:rh});
+    // Carve floor
+    for(let dy=ry;dy<ry+rh;dy++) for(let dx=rx;dx<rx+rw;dx++) map[dy][dx]=0;
+  }
+  // If no rooms generated, force at least one big room in centre
+  if(rooms.length===0){
+    const cx=Math.floor(MW/2), cy=Math.floor(MH/2);
+    for(let dy=cy-5;dy<=cy+5;dy++) for(let dx=cx-8;dx<=cx+8;dx++) map[dy][dx]=0;
+    rooms.push({x:cx-8,y:cy-5,w:16,h:10});
+  }
+
+  // Connect rooms with L-shaped corridors (2 tiles wide so player can move)
+  for(let i=1;i<rooms.length;i++){
+    const a=rooms[i-1], b=rooms[i];
+    const ax=Math.floor(a.x+a.w/2), ay=Math.floor(a.y+a.h/2);
+    const bx=Math.floor(b.x+b.w/2), by=Math.floor(b.y+b.h/2);
+    // Horizontal then vertical
+    const minX=Math.min(ax,bx), maxX=Math.max(ax,bx);
+    const minY=Math.min(ay,by), maxY=Math.max(ay,by);
+    for(let x=minX;x<=maxX;x++){
+      if(ay>=1&&ay<MH-1)map[ay][x]=0;
+      if(ay+1<MH-1)    map[ay+1][x]=0;
+    }
+    for(let y=minY;y<=maxY;y++){
+      if(bx>=1&&bx<MW-1)map[y][bx]=0;
+      if(bx+1<MW-1)     map[y][bx+1]=0;
     }
   }
-  // Carve open rooms and guarantee doorways
-  for (let i = 0; i < 16; i++) {
-    const rx = Math.floor(rnd()*(MW-16))+4;
-    const ry = Math.floor(rnd()*(MH-16))+4;
-    const rw = Math.floor(rnd()*10)+5;
-    const rh = Math.floor(rnd()*10)+5;
-    for (let dy=ry; dy<ry+rh && dy<MH-1; dy++)
-      for (let dx=rx; dx<rx+rw && dx<MW-1; dx++)
-        map[dy][dx] = 0;
-    // Walls around room
-    for (let dy=ry-1; dy<=ry+rh && dy<MH-1; dy++)
-      for (let dx=rx-1; dx<=rx+rw && dx<MW-1; dx++) {
-        if (dy<1||dx<1) continue;
-        if ((dy===ry-1||dy===ry+rh||dx===rx-1||dx===rx+rw) && map[dy][dx]===0)
-          map[dy][dx]=1;
-      }
-    // Punch AT LEAST 2 doorways (one on each axis) so no room is sealed
-    // Door on top or bottom wall
-    const doorX1 = rx + 1 + Math.floor(rnd()*(rw-2));
-    const doorY1 = (rnd()<.5) ? ry-1 : ry+rh;
-    if (doorY1>0 && doorY1<MH-1 && doorX1>0 && doorX1<MW-1) map[doorY1][doorX1]=0;
-    if (doorX1+1<MW-1) map[Math.min(doorY1,MH-2)][doorX1+1]=0; // 2-wide door
-    // Door on left or right wall
-    const doorY2 = ry + 1 + Math.floor(rnd()*(rh-2));
-    const doorX2 = (rnd()<.5) ? rx-1 : rx+rw;
-    if (doorX2>0 && doorX2<MW-1 && doorY2>0 && doorY2<MH-1) map[doorY2][doorX2]=0;
-    if (doorY2+1<MH-1) map[doorY2+1][Math.min(doorX2,MW-2)]=0; // 2-tall door
-  }
-  // Connectivity pass: flood fill from centre, carve path to any isolated floors
-  const cx=Math.floor(MW/2), cy=Math.floor(MH/2);
-  if(map[cy][cx]!==0){map[cy][cx]=0;}
-  // Simple tunnel carver: link unconnected open tiles
-  function floodMark() {
-    const vis=[];
-    for(let y=0;y<MH;y++){vis[y]=[];for(let x=0;x<MW;x++)vis[y][x]=false;}
-    const q=[];
-    // find any floor tile near centre
-    outer: for(let r2=0;r2<Math.max(MW,MH);r2++)
-      for(let dy=-r2;dy<=r2;dy++) for(let dx=-r2;dx<=r2;dx++){
-        const tx=cx+dx,ty=cy+dy;
-        if(tx>=0&&tx<MW&&ty>=0&&ty<MH&&map[ty][tx]===0){q.push([tx,ty]);vis[ty][tx]=true;break outer;}
-      }
-    while(q.length){
-      const [x,y]=q.shift();
-      for(const [nx,ny] of [[x+1,y],[x-1,y],[x,y+1],[x,y-1]])
-        if(nx>=0&&nx<MW&&ny>=0&&ny<MH&&!vis[ny][nx]&&map[ny][nx]===0){vis[ny][nx]=true;q.push([nx,ny]);}
-    }
-    return vis;
-  }
-  const reachable=floodMark();
-  // Carve simple paths from unreachable floors to nearest reachable
-  for(let y=1;y<MH-1;y++) for(let x=1;x<MW-1;x++){
-    if(map[y][x]===0&&!reachable[y][x]){
-      // Walk toward centre until we hit reachable
-      let px=x,py=y;
-      for(let step=0;step<MW+MH;step++){
-        if(reachable[py][px])break;
-        if(px<cx)px++;else if(px>cx)px--;
-        else if(py<cy)py++;else py--;
-        if(px>=1&&px<MW-1&&py>=1&&py<MH-1)map[py][px]=0;
-      }
-    }
-  }
+
+  // Scatter some crates on floor tiles
+  for(let y=1;y<MH-1;y++) for(let x=1;x<MW-1;x++)
+    if(map[y][x]===0 && rnd()<.04) map[y][x]=2;
+
+  // Hard border
+  for(let x=0;x<MW;x++){map[0][x]=1;map[MH-1][x]=1;}
+  for(let y=0;y<MH;y++){map[y][0]=1;map[y][MW-1]=1;}
 }
 
 // ── Solid / cover check ───────────────────────────────
@@ -655,13 +645,13 @@ function applyAddon(key) {
   updActBtns();
 }
 function throwGrenade() {
-  if (!lp||!lp.addons.grenades||GS!=='playing') return;
+  if (!lp||lp.dead||!lp.addons||!lp.addons.grenades) return;
   lp.addons.grenades--;
   grenades.push({x:lp.x,y:lp.y,vx:Math.cos(lp.aimA)*210,vy:Math.sin(lp.aimA)*210,t:1.8});
   popup('GRENADE ('+lp.addons.grenades+' left)');
 }
 function placeMine() {
-  if (!lp||!lp.addons.mines||GS!=='playing') return;
+  if (!lp||lp.dead||!lp.addons||!lp.addons.mines) return;
   lp.addons.mines--;
   mines.push({x:lp.x,y:lp.y,arm:1.5});
   popup('MINE ('+lp.addons.mines+' left)');
@@ -710,7 +700,8 @@ function initJoy() {
     if (GS!=='playing') return;
     for (const t of e.changedTouches) {
       let el=t.target, isUI=false;
-      while(el){if(el===sw||el===wb){isUI=true;break;}el=el.parentElement;}
+      const ab=document.getElementById('actBtns');
+      while(el){if(el===sw||el===wb||el===ab){isUI=true;break;}el=el.parentElement;}
       if (isUI) continue;
       e.preventDefault();
       const half=window.innerWidth/2;
@@ -758,6 +749,12 @@ function initJoy() {
   };
   document.addEventListener('touchend',rst,{passive:false});
   document.addEventListener('touchcancel',rst,{passive:false});
+
+  // Action button touch handlers — explicit touchend for reliability
+  const btnG=document.getElementById('btnGrenade');
+  const btnM=document.getElementById('btnMine');
+  if(btnG) btnG.addEventListener('touchend',e=>{e.preventDefault();e.stopPropagation();throwGrenade();},{passive:false});
+  if(btnM) btnM.addEventListener('touchend',e=>{e.preventDefault();e.stopPropagation();placeMine();},{passive:false});
 }
 
 // ── Keyboard ──────────────────────────────────────────
@@ -1743,7 +1740,7 @@ window.addEventListener('load',async()=>{
   await loadProf();
   setupPWA();
   // Ensure minimap canvas is correctly positioned
-  mm.style.cssText='position:fixed;top:8px;right:8px;z-index:10;display:none;border:1px solid rgba(0,255,231,.3);';
+  mm.style.cssText='position:fixed;top:80px;right:8px;z-index:10;display:none;border:1px solid rgba(0,255,231,.3);';
 });
 document.addEventListener('contextmenu',e=>e.preventDefault());
 </script>
