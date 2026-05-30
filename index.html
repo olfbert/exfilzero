@@ -192,7 +192,7 @@ input::placeholder{color:rgba(0,255,231,.3);}
     <button class="btn" onclick="doJoin()">CONNECT</button>
   </div>
   <div id="mStats" style="margin-top:.9rem;font-size:.65rem;color:rgba(0,255,231,.35);text-align:center;"></div>
-  <div style="position:absolute;bottom:10px;right:12px;font-size:.55rem;color:rgba(0,255,231,.2);letter-spacing:.1em;">v5.3</div>
+  <div style="position:absolute;bottom:10px;right:12px;font-size:.55rem;color:rgba(0,255,231,.2);letter-spacing:.1em;">v5.5</div>
 </div>
 
 <!-- SHOP -->
@@ -691,7 +691,7 @@ function spawnEnemies(sx,sy) {
 }
 
 // ── Loot ──────────────────────────────────────────────
-const ADDON_KEYS = ['laser','armor','grenade','mine','medkit','stim','xray'];
+const ADDON_KEYS = ['laser','armor','grenade','mine','medkit','stim','xray','turret'];
 function spawnLoot(sx,sy) {
   loot=[];
   // Guaranteed weapon drops
@@ -751,7 +751,7 @@ function applyAddon(key) {
     case 'medkit':  lp.hp=Math.min(lp.hp+60,lp.maxHP); popup('+60 HP'); break;
     case 'stim':    lp.timers.stim+=10;  popup('STIM 10s'); break;
     case 'xray':    lp.timers.xray+=15;  popup('THERMAL 15s'); break;
-    case 'turret':  lp.addons.turrets=(lp.addons.turrets||0)+1; popup('TURRET READY [T]'); break;
+    case 'turret':  if((lp.addons.turrets||0)<2){lp.addons.turrets=(lp.addons.turrets||0)+1; popup('TURRET READY [T] ('+lp.addons.turrets+'/2)');} else popup('TURRET MAX (2/2)'); break;
   }
   updActBtns();
 }
@@ -1626,7 +1626,6 @@ function drawExZone() {
 
 function drawLoot() {
   const ts=Date.now();
-  for(const tu of turrets){mx.beginPath();mx.arc(tu.x*sx,tu.y*sy,3,0,Math.PI*2);mx.fillStyle='#0fe';mx.fill();}
   for(const l of loot){
     if(l.done) continue;
     const bob=Math.sin(ts*.003+l.x)*3;
@@ -1643,7 +1642,7 @@ function drawLoot() {
     gx.fillStyle='#fff';gx.fillText(ico,l.x,l.y+bob+5);
   }
 }
-function getAddonIcon(k){return{laser:'🔴',armor:'🛡',grenade:'💣',mine:'⚠',medkit:'➕',stim:'⚡',xray:'👁'}[k]||'?';}
+function getAddonIcon(k){return{laser:'🔴',armor:'🛡',grenade:'💣',mine:'⚠',medkit:'➕',stim:'⚡',xray:'👁',turret:'🗼'}[k]||'?';}
 function getLootIcon(t){return{ammo:'🔋',hp:'💊','$':'💰'}[t]||'?';}
 
 function drawEnemies() {
@@ -1834,6 +1833,7 @@ function drawMinimap() {
     mx.beginPath();mx.arc(en.x*sx,en.y*sy,1.5,0,Math.PI*2);
     mx.fillStyle=en.state==='chase'?'#f40':'#f22';mx.fill();
   }
+  for(const tu of turrets){mx.beginPath();mx.arc(tu.x*sx,tu.y*sy,3,0,Math.PI*2);mx.fillStyle='#0fe';mx.fill();}
   for(const l of loot){
     if(l.done) continue;
     mx.beginPath();mx.arc(l.x*sx,l.y*sy,l.type==='wep'?2.5:1,0,Math.PI*2);
@@ -1878,12 +1878,19 @@ function updHUD(){
 }
 function updActBtns(){
   if(!lp)return;
-  const gc2=lp.addons.grenades||0, mc=lp.addons.mines||0;
-  const bg=document.getElementById('btnGrenade'),bm=document.getElementById('btnMine');
-  const gc3=document.getElementById('grnCnt'),mc2=document.getElementById('mneCnt');
-  if(gc3)gc3.textContent=gc2;if(mc2)mc2.textContent=mc;
+  const gc2=lp.addons.grenades||0, mc=lp.addons.mines||0, tc=lp.addons.turrets||0;
+  const bg=document.getElementById('btnGrenade');
+  const bm=document.getElementById('btnMine');
+  const bt=document.getElementById('btnTurret');
+  const e1=document.getElementById('grnCnt');
+  const e2=document.getElementById('mneCnt');
+  const e3=document.getElementById('turCnt');
+  if(e1)e1.textContent=gc2;
+  if(e2)e2.textContent=mc;
+  if(e3)e3.textContent=tc;
   if(bg)bg.style.opacity=gc2>0?'1':'.4';
   if(bm)bm.style.opacity=mc>0?'1':'.4';
+  if(bt)bt.style.opacity=tc>0?'1':'.4';
 }
 function updWBar(){
   if(!lp)return;
