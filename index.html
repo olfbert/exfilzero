@@ -192,6 +192,7 @@ input::placeholder{color:rgba(0,255,231,.3);}
     <button class="btn" onclick="doJoin()">CONNECT</button>
   </div>
   <div id="mStats" style="margin-top:.9rem;font-size:.65rem;color:rgba(0,255,231,.35);text-align:center;"></div>
+  <div style="position:absolute;bottom:10px;right:12px;font-size:.55rem;color:rgba(0,255,231,.2);letter-spacing:.1em;">v5.0</div>
 </div>
 
 <!-- SHOP -->
@@ -946,171 +947,157 @@ gc.addEventListener('mousemove',e=>{
 });
 gc.addEventListener('mousedown',e=>{ if(e.button===0&&GS==='playing') doShoot(); });
 
-// ── Networking — PeerJS Cloud Signaling ───────────────
-// Uses PeerJS CDN server (0.peerjs.com) for reliable signaling.
-// Only signaling goes through PeerJS server — game data is P2P DataChannel.
-let isHost=false, roomCode='';
-let rtcDCs={};       // DataChannels by peerId
-let myPeer=null;     // PeerJS instance
-let sigCleanupDone=false;
+// ── Networking v5 — PeerJS, clean implementation ─────
+// PeerJS loads once from CDN. Host uses room code as PeerJS ID.
+// Joiner connects directly to that ID. DataChannel carries all game data.
 
+let isHost=false, roomCode='';
+let myPeer=null;
+let peerConns={};   // pid → PeerJS DataConnection
+// rtcDCs kept as alias for bcast() compatibility
+let rtcDCs={};
+
+// ── Load PeerJS from CDN ──────────────────────────────
+let peerJSReady=false, peerJSCallbacks=[];
 function loadPeerJS(cb) {
-  if(window.Peer){ cb(); return; }
+  if(peerJSReady){ cb(); return; }
+  peerJSCallbacks.push(cb);
+  if(document.querySelector('script[data-pjs]')) return; // already loading
   const s=document.createElement('script');
+  s.setAttribute('data-pjs','1');
   s.src='https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
-  s.crossOrigin='anonymous';
-  s.onload=cb;
-  s.onerror=()=>setConn('r','PEERJS LOAD FAILED');
+  s.onload=()=>{ peerJSReady=true; peerJSCallbacks.forEach(f=>f()); peerJSCallbacks=[]; };
+  s.onerror=()=>setConn('r','CDN FAILED');
   document.head.appendChild(s);
 }
 
-function initPeerHost(cb) {
+// ── Create a PeerJS peer ──────────────────────────────
+function createPeer(id, onOpen, onErr) {
+  if(myPeer && !myPeer.destroyed) { myPeer.destroy(); }
+  const cfg = id ? {debug:0} : {debug:0};
+  myPeer = id ? new Peer(id, cfg) : new Peer(cfg);
+  myPeer.on('open', pid=>onOpen(pid));
+  myPeer.on('error', e=>{
+    console.warn('PeerJS error:', e.type, e);
+    onErr&&onErr(e);
+  });
+}
+
+// ── HOST ──────────────────────────────────────────────
+function startHost() {
   loadPeerJS(()=>{
-    if(myPeer&&!myPeer.destroyed){ cb(myPeer.id); return; }
-    // Host uses roomCode as PeerJS ID so joiner can connect directly
-    myPeer = new Peer(roomCode, {debug:0});
-    myPeer.on('open', id=>{
-      setConn('g','HOSTING — SHARE CODE');
-      cb(id);
-    });
-    myPeer.on('connection', conn=>{ incomingConn(conn); });
-    myPeer.on('error', e=>{
-      if(e.type==='unavailable-id'){
-        // Code taken — generate new one
-        roomCode = Math.random().toString(36).slice(2,7).toUpperCase();
+    setConn('y','REGISTERING...');
+    // Use roomCode as PeerJS ID (must be unique on PeerJS server)
+    createPeer('exfil-'+roomCode,
+      // onOpen
+      pid=>{
         document.getElementById('lCode').textContent=roomCode;
-        myPeer = new Peer(roomCode, {debug:0});
-        myPeer.on('open', id=>{ setConn('g','HOSTING'); cb(id); });
-        myPeer.on('connection', conn=>{ incomingConn(conn); });
-      } else {
-        setConn('r','ERR:'+e.type);
-        console.warn('PeerJS host error',e);
+        setConn('g','HOSTING');
+        // Listen for incoming connections
+        myPeer.on('connection', conn=>onIncoming(conn));
+      },
+      // onErr
+      e=>{
+        if(e.type==='unavailable-id'){
+          // Room code taken — add suffix
+          roomCode=Math.random().toString(36).slice(2,7).toUpperCase();
+          document.getElementById('lCode').textContent='RETRYING...';
+          setTimeout(startHost, 500);
+        } else {
+          setConn('r','HOST ERR: '+e.type);
+        }
       }
-    });
+    );
   });
 }
 
-function initPeerJoin(hostId, cb) {
+// ── JOIN ──────────────────────────────────────────────
+function startJoin(code) {
   loadPeerJS(()=>{
-    if(myPeer&&!myPeer.destroyed){ connectToHost(hostId, cb); return; }
-    // Joiner uses random ID
-    myPeer = new Peer(undefined, {debug:0});
-    myPeer.on('open', ()=>{
-      setConn('y','CONNECTING TO HOST...');
-      connectToHost(hostId, cb);
-    });
-    myPeer.on('error', e=>{
-      setConn('r','ERR:'+e.type);
-      console.warn('PeerJS join error',e);
-    });
+    setConn('y','CONNECTING...');
+    createPeer(null,
+      // onOpen — my peer is created, now connect to host
+      myPid=>{
+        setConn('y','REACHING HOST...');
+        const conn=myPeer.connect('exfil-'+code, {
+          reliable:true,
+          serialization:'json',
+          metadata:{name:myName, pid:myId}
+        });
+        conn.on('open',()=>{
+          onConnOpen(conn, 'exfil-'+code);
+          setConn('g','CONNECTED');
+        });
+        conn.on('error',e=>{
+          setConn('r','JOIN FAILED: '+e.type);
+          console.warn('join conn error',e);
+        });
+      },
+      e=>setConn('r','JOIN ERR: '+e.type)
+    );
   });
 }
 
-function connectToHost(hostId, cb) {
-  const conn = myPeer.connect(hostId, {
-    reliable: false,
-    serialization: 'json',
-    metadata: {name: myName, id: myId}
-  });
-  const pid = hostId;
-  conn.on('open', ()=>{
-    setupDC(conn, pid);
-    setConn('g','CONNECTED TO HOST');
-    cb&&cb();
-  });
-  conn.on('error', e=>{ setConn('r','CONN ERR'); console.warn(e); });
-}
-
-function incomingConn(conn) {
-  const pid = conn.peer;
-  const meta = conn.metadata||{};
-  conn.on('open', ()=>{
-    setupDC(conn, pid);
-    // Register them in lobby
-    const theirName = meta.name||pid.slice(0,6);
-    updLobby(pid, theirName);
+// ── Called when HOST receives incoming connection ──────
+function onIncoming(conn) {
+  // Register handlers BEFORE open fires
+  conn.on('open',()=>{
+    onConnOpen(conn, conn.peer);
+    const meta=conn.metadata||{};
+    const name=meta.name||conn.peer.replace('exfil-','').slice(0,8);
+    updLobby(conn.peer, name);
     setConn('g', Object.keys(rtcDCs).length+' LINKED');
   });
-  conn.on('error', e=>console.warn('incoming conn error',e));
+  conn.on('error',e=>console.warn('incoming error',e));
 }
 
-// sigSend is a no-op with PeerJS (signaling is handled internally)
-function sigSend(obj) {}
-function startSigPoll() {}
-function stopSigPoll() {}
-function sigCleanup() {
-  stopSigPoll();
-  if(myPeer&&!myPeer.destroyed){ try{myPeer.destroy();}catch(_){} }
-  myPeer=null; rtcDCs={};
-}
+// ── Shared: called when a DataConnection is open ──────
+function onConnOpen(conn, pid) {
+  peerConns[pid]=conn;
+  rtcDCs[pid]=conn;   // alias for bcast()
 
-// onSigMsg only handles 'start' now (sent via DataChannel, not signaling)
-async function onSigMsg(m) {
-  if(m.type==='start'&&!isHost) startGame(m.seed);
-}
-// mkPC and createOffer replaced by PeerJS (see initPeerHost/connectToHost)
-function setupDC(conn,pid) {
-  rtcDCs[pid]=conn;
-  // PeerJS conn: .on('data'), .on('close'), .send()
-  // Send hello immediately
-  const n=Object.keys(rtcDCs).length;
-  setConn('g', n+' LINKED');
-  sndP(pid,{type:'hello',id:myId,name:myName});
-  conn.on('data', m=>{
-    try{
-      const msg = typeof m==='string' ? JSON.parse(m) : m;
-      onPMsg(pid,msg);
-    }catch(e){console.warn('data parse error',e);}
+  // Register data handler
+  conn.on('data', raw=>{
+    try {
+      const m = (typeof raw==='string') ? JSON.parse(raw) : raw;
+      onPMsg(pid, m);
+    } catch(e){ console.warn('data parse err',e); }
   });
-  conn.on('close', ()=>dropPeer(pid));
-  conn.on('error', e=>{ console.warn('conn error',e); dropPeer(pid); });
+  conn.on('close',   ()=>dropPeer(pid));
+  conn.on('error', e=>{ console.warn('conn err',e); dropPeer(pid); });
+
+  // Send hello AFTER handlers are registered
+  sndP(pid, {type:'hello', id:myId, name:myName});
 }
-function sndP(pid,m) {
-  const conn=rtcDCs[pid];
-  if(!conn) return;
-  try{
-    // PeerJS with serialization:'json' handles objects directly
-    if(conn.send) conn.send(m);
-  }catch(_){}
+
+// ── Send / broadcast ──────────────────────────────────
+function sndP(pid, m) {
+  const conn=peerConns[pid];
+  if(!conn || conn.open===false) return;
+  try { conn.send(m); } catch(e){}
 }
-function bcast(m) { Object.keys(rtcDCs).forEach(id=>sndP(id,m)); }
+function bcast(m) { Object.keys(peerConns).forEach(id=>sndP(id,m)); }
+
 function dropPeer(pid) {
   if(pOther[pid]) pOther[pid].dead=true;
+  delete peerConns[pid];
   delete rtcDCs[pid];
-  const n=Object.keys(rtcDCs).length;
+  const n=Object.keys(peerConns).length;
   setConn(n>0?'g':'y', n>0?n+' CONNECTED':'PEER LEFT');
 }
 
-function onPMsg(pid,m) {
-  if(m.type==='hello'){
-    const isNew = !pOther[m.id];
-    pOther[m.id]=pOther[m.id]||mkRP(m.id,m.name);
-    pOther[m.id].name=m.name;
-    updLobby(m.id,m.name);
-    sndP(pid,{type:'hello',id:myId,name:myName});
-    if(isNew && GS==='menu') {
-      // Flash the lobby player list
-      const el=document.getElementById('lStat');
-      if(el){el.style.color='var(--neon)';setTimeout(()=>el.style.color='',1000);}
-    }
-  }
-  if(m.type==='state'){
-    if(!pOther[m.id])pOther[m.id]=mkRP(m.id,m.name||'?');
-    const p=pOther[m.id];
-    p.x=m.x; p.y=m.y; p.aimA=m.a; p.hp=m.h; p.dead=m.d;
-    if(m.name) p.name=m.name;
-  }
-  if(m.type==='shoot') {
-    // Remote player bullet — not enemy, not turret
-    bullets.push({x:m.x,y:m.y,vx:Math.cos(m.a)*m.spd,vy:Math.sin(m.a)*m.spd,
-      ownerId:m.id,isEnemy:false,isTurret:false,life:m.rng,rng:m.rng,
-      radius:4,col:m.col||'#fa0',dmg:m.dmg});
-  }
-  if(m.type==='hit'&&m.tid===myId) { takeDmg(m.dmg); if(lp&&lp.hp<=0) playerDead(m.src); }
-  if(m.type==='loot_take') loot=loot.filter(l=>l.id!==m.lid);
-  if(m.type==='en_dead') { const en=enemies.find(e=>e.id===m.id); if(en)en.hp=0; }
-  if(m.type==='start'&&!isHost) startGame(m.seed);
+// ── Cleanup ───────────────────────────────────────────
+function sigCleanup() {
+  if(myPeer&&!myPeer.destroyed){ try{myPeer.destroy();}catch(_){} }
+  myPeer=null; peerConns={}; rtcDCs={};
 }
+
+// ── No-ops (kept for call-site compatibility) ─────────
+function sigSend(){}
+function startSigPoll(){}
+function stopSigPoll(){}
+async function onSigMsg(m){ if(m.type==='start'&&!isHost) startGame(m.seed); }
+
 
 // ── Lobby ─────────────────────────────────────────────
 let lobbyPeers={};
@@ -1136,9 +1123,8 @@ function doHost() {
   document.getElementById('btnDeploy').style.display='none';
   showScr('sLobby');
   document.getElementById('lCode').textContent='LOADING...';
-  initPeerHost(id=>{
-    document.getElementById('lCode').textContent=roomCode;
-  });
+  document.getElementById('btnDeploy').style.display='none';
+  startHost();
 }
 function doJoin() {
   myName=document.getElementById('iName').value.trim().toUpperCase()||'SHADOW';
@@ -1147,20 +1133,17 @@ function doJoin() {
   roomCode=code; isHost=false; lobbyPeers={}; updLobby(myId,myName);
   document.getElementById('lCode').textContent=code;
   showScr('sLobby');
-  setConn('y','CONNECTING...');
-  initPeerJoin(code, ()=>{
-    // Send hello once DataChannel opens (handled in setupDC)
-  });
+  startJoin(code);
 }
 function leaveLobby() {
   sigCleanup();
-  rtcDCs={}; lobbyPeers={};
+  lobbyPeers={};
   showScr('sMenu');
 }
 function hostDeploy() {
   const seed=Date.now();
   bcast({type:'start',seed});
-  startGame(seed);
+  setTimeout(()=>startGame(seed), 200); // small delay so bcast arrives first
 }
 function soloRun() {
   myName=document.getElementById('iName').value.trim().toUpperCase()||'GHOST';
@@ -1323,7 +1306,7 @@ function stopGame() {
   if (animId){cancelAnimationFrame(animId);animId=null;}
   if (zoneTimer){clearInterval(zoneTimer);zoneTimer=null;}
   sigCleanup();
-  rtcDCs={}; lobbyPeers={};
+  lobbyPeers={};
   lp=null; pOther={}; enemies=[]; bullets=[]; loot=[]; grenades=[]; mines=[]; parts=[]; turrets=[];
   sessionLoot=0; sessionKills=0;
   ['hud','minimap','mm','connSt','joyL','joyR','wBar','actBtns','exTimer'].forEach(id=>{
