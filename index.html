@@ -184,7 +184,13 @@ input::placeholder{color:rgba(0,255,231,.3);}
   <button class="btn" onclick="openShop()">UPGRADE SHOP</button>
   <button class="btn" onclick="openDealer()">WEAPONS DEALER</button>
   <button class="btn" onclick="openOptions()">OPTIONS</button>
-  <!-- Multiplayer coming soon -->
+  <button class="btn" onclick="doHost()">HOST GAME</button>
+  <button class="btn" onclick="toggleJoin()">JOIN GAME</button>
+  <div id="joinSec" style="display:none;flex-direction:column;align-items:center;margin-top:4px;">
+    <input id="iCode" placeholder="ROOM CODE" maxlength="8"
+           style="text-transform:uppercase;letter-spacing:.2em;font-size:1.1rem;width:220px;text-align:center;">
+    <button class="btn" onclick="doJoin()">CONNECT</button>
+  </div>
   <div id="mStats" style="margin-top:.9rem;font-size:.65rem;color:rgba(0,255,231,.35);text-align:center;"></div>
 </div>
 
@@ -631,7 +637,7 @@ function mkLP(sx,sy) {
   return player;
 }
 function mkRP(id,name) {
-  return {id,name,x:3*T,y:3*T,aimA:0,hp:100,maxHP:100,dead:false,radius:13,color:'#f64',isLocal:false};
+  return {id,name:name||'?',x:3*T,y:3*T,aimA:0,hp:100,maxHP:100,dead:false,radius:13,color:'#f64',isLocal:false};
 }
 function curWep() { return lp ? lp.weps[lp.wi] : null; }
 function cycleWep() {
@@ -1010,7 +1016,11 @@ async function createOffer(pid) {
 }
 function setupDC(dc,pid) {
   rtcDCs[pid]=dc;
-  dc.onopen=()=>{ setConn('g','LINKED'); sndP(pid,{type:'hello',id:myId,name:myName}); };
+  dc.onopen=()=>{
+    const n=Object.keys(rtcDCs).length;
+    setConn('g', n+' LINKED');
+    sndP(pid,{type:'hello',id:myId,name:myName});
+  };
   dc.onmessage=e=>{ try{onPMsg(pid,JSON.parse(e.data));}catch(_){} };
   dc.onclose=()=>dropPeer(pid);
 }
@@ -1019,12 +1029,38 @@ function sndP(pid,m) {
   if(dc&&dc.readyState==='open') try{dc.send(JSON.stringify(m));}catch(_){}
 }
 function bcast(m) { Object.keys(rtcDCs).forEach(id=>sndP(id,m)); }
-function dropPeer(pid) { if(pOther[pid]) pOther[pid].dead=true; delete rtcDCs[pid]; delete rtcPeers[pid]; setConn('y','PEER LEFT'); }
+function dropPeer(pid) {
+  if(pOther[pid]) pOther[pid].dead=true;
+  delete rtcDCs[pid]; delete rtcPeers[pid];
+  const n=Object.keys(rtcDCs).length;
+  setConn(n>0?'g':'y', n>0?n+' CONNECTED':'PEER LEFT');
+}
 
 function onPMsg(pid,m) {
-  if(m.type==='hello'){ pOther[m.id]=pOther[m.id]||mkRP(m.id,m.name); updLobby(m.id,m.name); sndP(pid,{type:'hello',id:myId,name:myName}); }
-  if(m.type==='state'){ if(!pOther[m.id])pOther[m.id]=mkRP(m.id,'?'); const p=pOther[m.id]; p.x=m.x;p.y=m.y;p.aimA=m.a;p.hp=m.h;p.dead=m.d; }
-  if(m.type==='shoot') spawnBullet(m.x,m.y,m.a,m.id,m.spd,m.col,m.dmg,m.rng);
+  if(m.type==='hello'){
+    const isNew = !pOther[m.id];
+    pOther[m.id]=pOther[m.id]||mkRP(m.id,m.name);
+    pOther[m.id].name=m.name;
+    updLobby(m.id,m.name);
+    sndP(pid,{type:'hello',id:myId,name:myName});
+    if(isNew && GS==='menu') {
+      // Flash the lobby player list
+      const el=document.getElementById('lStat');
+      if(el){el.style.color='var(--neon)';setTimeout(()=>el.style.color='',1000);}
+    }
+  }
+  if(m.type==='state'){
+    if(!pOther[m.id])pOther[m.id]=mkRP(m.id,m.name||'?');
+    const p=pOther[m.id];
+    p.x=m.x; p.y=m.y; p.aimA=m.a; p.hp=m.h; p.dead=m.d;
+    if(m.name) p.name=m.name;
+  }
+  if(m.type==='shoot') {
+    // Remote player bullet — not enemy, not turret
+    bullets.push({x:m.x,y:m.y,vx:Math.cos(m.a)*m.spd,vy:Math.sin(m.a)*m.spd,
+      ownerId:m.id,isEnemy:false,isTurret:false,life:m.rng,rng:m.rng,
+      radius:4,col:m.col||'#fa0',dmg:m.dmg});
+  }
   if(m.type==='hit'&&m.tid===myId) { takeDmg(m.dmg); if(lp&&lp.hp<=0) playerDead(m.src); }
   if(m.type==='loot_take') loot=loot.filter(l=>l.id!==m.lid);
   if(m.type==='en_dead') { const en=enemies.find(e=>e.id===m.id); if(en)en.hp=0; }
@@ -1041,7 +1077,7 @@ function renderLobby() {
     Object.entries(lobbyPeers).map(([id,n])=>`<div class="pe">+ ${n}${id===myId?' (YOU)':''}</div>`).join('');
   const c=Object.keys(lobbyPeers).length;
   document.getElementById('lStat').textContent=`${c} OPERATOR${c!==1?'S':''} READY`;
-  if (isHost&&c>=1) document.getElementById('btnDeploy').style.display='';
+  if (isHost&&c>=2) document.getElementById('btnDeploy').style.display='';
 }
 function toggleJoin() {
   const s=document.getElementById('joinSec');
@@ -1052,11 +1088,12 @@ function doHost() {
   isHost=true; lobbyPeers={}; updLobby(myId,myName);
   roomCode=Math.random().toString(36).slice(2,7).toUpperCase();
   document.getElementById('lCode').textContent='CONNECTING...';
+  document.getElementById('btnDeploy').style.display='none';
   showScr('sLobby');
   sigIdx=0;
   openSig(()=>{
     document.getElementById('lCode').textContent=roomCode;
-    setConn('g','HOSTING');
+    setConn('g','HOSTING — WAIT FOR PLAYERS');
   });
 }
 function doJoin() {
