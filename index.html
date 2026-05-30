@@ -946,92 +946,137 @@ gc.addEventListener('mousemove',e=>{
 });
 gc.addEventListener('mousedown',e=>{ if(e.button===0&&GS==='playing') doShoot(); });
 
-// ── Networking ────────────────────────────────────────
+// ── Networking — PeerJS Cloud Signaling ───────────────
+// Uses PeerJS CDN server (0.peerjs.com) for reliable signaling.
+// Only signaling goes through PeerJS server — game data is P2P DataChannel.
 let isHost=false, roomCode='';
-let rtcPeers={}, rtcDCs={}, sigWs=null, sigSvrs=[
-  'wss://ws.vi-server.org/mirror/',
-  'wss://echo.websocket.events/',
-  'wss://socketsbay.com/wss/v2/1/demo/',
-];
-let sigIdx=0;
+let rtcDCs={};       // DataChannels by peerId
+let myPeer=null;     // PeerJS instance
+let sigCleanupDone=false;
 
-function openSig(onopen) {
-  function tryNext() {
-    if (sigIdx>=sigSvrs.length) { setConn('r','NO SIG'); return; }
-    const url=sigSvrs[sigIdx++];
-    try {
-      sigWs=new WebSocket(url);
-      sigWs.onopen=()=>{ setConn('y','SIG OK'); onopen&&onopen(); };
-      sigWs.onmessage=e=>{ try{onSigMsg(JSON.parse(e.data));}catch(_){} };
-      sigWs.onerror=()=>{ try{sigWs.close();}catch(_){} sigWs=null; tryNext(); };
-      sigWs.onclose=()=>{ if(GS==='playing') setConn('r','SIG LOST'); };
-    } catch(_) { tryNext(); }
-  }
-  tryNext();
+function loadPeerJS(cb) {
+  if(window.Peer){ cb(); return; }
+  const s=document.createElement('script');
+  s.src='https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
+  s.crossOrigin='anonymous';
+  s.onload=cb;
+  s.onerror=()=>setConn('r','PEERJS LOAD FAILED');
+  document.head.appendChild(s);
 }
-function sigSend(obj) {
-  if (sigWs&&sigWs.readyState===1)
-    sigWs.send(JSON.stringify({...obj,room:roomCode,from:myId}));
+
+function initPeerHost(cb) {
+  loadPeerJS(()=>{
+    if(myPeer&&!myPeer.destroyed){ cb(myPeer.id); return; }
+    // Host uses roomCode as PeerJS ID so joiner can connect directly
+    myPeer = new Peer(roomCode, {debug:0});
+    myPeer.on('open', id=>{
+      setConn('g','HOSTING — SHARE CODE');
+      cb(id);
+    });
+    myPeer.on('connection', conn=>{ incomingConn(conn); });
+    myPeer.on('error', e=>{
+      if(e.type==='unavailable-id'){
+        // Code taken — generate new one
+        roomCode = Math.random().toString(36).slice(2,7).toUpperCase();
+        document.getElementById('lCode').textContent=roomCode;
+        myPeer = new Peer(roomCode, {debug:0});
+        myPeer.on('open', id=>{ setConn('g','HOSTING'); cb(id); });
+        myPeer.on('connection', conn=>{ incomingConn(conn); });
+      } else {
+        setConn('r','ERR:'+e.type);
+        console.warn('PeerJS host error',e);
+      }
+    });
+  });
 }
+
+function initPeerJoin(hostId, cb) {
+  loadPeerJS(()=>{
+    if(myPeer&&!myPeer.destroyed){ connectToHost(hostId, cb); return; }
+    // Joiner uses random ID
+    myPeer = new Peer(undefined, {debug:0});
+    myPeer.on('open', ()=>{
+      setConn('y','CONNECTING TO HOST...');
+      connectToHost(hostId, cb);
+    });
+    myPeer.on('error', e=>{
+      setConn('r','ERR:'+e.type);
+      console.warn('PeerJS join error',e);
+    });
+  });
+}
+
+function connectToHost(hostId, cb) {
+  const conn = myPeer.connect(hostId, {
+    reliable: false,
+    serialization: 'json',
+    metadata: {name: myName, id: myId}
+  });
+  const pid = hostId;
+  conn.on('open', ()=>{
+    setupDC(conn, pid);
+    setConn('g','CONNECTED TO HOST');
+    cb&&cb();
+  });
+  conn.on('error', e=>{ setConn('r','CONN ERR'); console.warn(e); });
+}
+
+function incomingConn(conn) {
+  const pid = conn.peer;
+  const meta = conn.metadata||{};
+  conn.on('open', ()=>{
+    setupDC(conn, pid);
+    // Register them in lobby
+    const theirName = meta.name||pid.slice(0,6);
+    updLobby(pid, theirName);
+    setConn('g', Object.keys(rtcDCs).length+' LINKED');
+  });
+  conn.on('error', e=>console.warn('incoming conn error',e));
+}
+
+// sigSend is a no-op with PeerJS (signaling is handled internally)
+function sigSend(obj) {}
+function startSigPoll() {}
+function stopSigPoll() {}
+function sigCleanup() {
+  stopSigPoll();
+  if(myPeer&&!myPeer.destroyed){ try{myPeer.destroy();}catch(_){} }
+  myPeer=null; rtcDCs={};
+}
+
+// onSigMsg only handles 'start' now (sent via DataChannel, not signaling)
 async function onSigMsg(m) {
-  if (!m||m.room!==roomCode||m.from===myId) return;
-  const pid=m.from;
-  if (m.type==='join' && isHost && !rtcPeers[pid]) {
-    updLobby(pid,m.name||pid);
-    await createOffer(pid);
-  }
-  if (m.type==='offer') {
-    if (!rtcPeers[pid]) mkPC(pid);
-    await rtcPeers[pid].setRemoteDescription(new RTCSessionDescription(m.sdp));
-    const ans=await rtcPeers[pid].createAnswer();
-    await rtcPeers[pid].setLocalDescription(ans);
-    sigSend({type:'answer',sdp:ans,to:pid});
-  }
-  if (m.type==='answer'&&rtcPeers[pid])
-    await rtcPeers[pid].setRemoteDescription(new RTCSessionDescription(m.sdp));
-  if (m.type==='ice'&&rtcPeers[pid]&&m.to===myId)
-    try{await rtcPeers[pid].addIceCandidate(new RTCIceCandidate(m.candidate));}catch(_){}
-  if (m.type==='start'&&!isHost) startGame(m.seed);
+  if(m.type==='start'&&!isHost) startGame(m.seed);
 }
-const ICE={iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]};
-function mkPC(pid) {
-  if (rtcPeers[pid]) return rtcPeers[pid];
-  const pc=new RTCPeerConnection(ICE);
-  rtcPeers[pid]=pc;
-  pc.onicecandidate=e=>{ if(e.candidate) sigSend({type:'ice',candidate:e.candidate,to:pid}); };
-  pc.onconnectionstatechange=()=>{
-    if(pc.connectionState==='connected') setConn('g','P2P OK');
-    if(pc.connectionState==='disconnected'||pc.connectionState==='failed') dropPeer(pid);
-  };
-  pc.ondatachannel=e=>setupDC(e.channel,pid);
-  return pc;
-}
-async function createOffer(pid) {
-  const pc=mkPC(pid);
-  const dc=pc.createDataChannel('g',{ordered:false,maxRetransmits:0});
-  setupDC(dc,pid);
-  const offer=await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  sigSend({type:'offer',sdp:offer,to:pid});
-}
-function setupDC(dc,pid) {
-  rtcDCs[pid]=dc;
-  dc.onopen=()=>{
-    const n=Object.keys(rtcDCs).length;
-    setConn('g', n+' LINKED');
-    sndP(pid,{type:'hello',id:myId,name:myName});
-  };
-  dc.onmessage=e=>{ try{onPMsg(pid,JSON.parse(e.data));}catch(_){} };
-  dc.onclose=()=>dropPeer(pid);
+// mkPC and createOffer replaced by PeerJS (see initPeerHost/connectToHost)
+function setupDC(conn,pid) {
+  rtcDCs[pid]=conn;
+  // PeerJS conn: .on('data'), .on('close'), .send()
+  // Send hello immediately
+  const n=Object.keys(rtcDCs).length;
+  setConn('g', n+' LINKED');
+  sndP(pid,{type:'hello',id:myId,name:myName});
+  conn.on('data', m=>{
+    try{
+      const msg = typeof m==='string' ? JSON.parse(m) : m;
+      onPMsg(pid,msg);
+    }catch(e){console.warn('data parse error',e);}
+  });
+  conn.on('close', ()=>dropPeer(pid));
+  conn.on('error', e=>{ console.warn('conn error',e); dropPeer(pid); });
 }
 function sndP(pid,m) {
-  const dc=rtcDCs[pid];
-  if(dc&&dc.readyState==='open') try{dc.send(JSON.stringify(m));}catch(_){}
+  const conn=rtcDCs[pid];
+  if(!conn) return;
+  try{
+    // PeerJS with serialization:'json' handles objects directly
+    if(conn.send) conn.send(m);
+  }catch(_){}
 }
 function bcast(m) { Object.keys(rtcDCs).forEach(id=>sndP(id,m)); }
 function dropPeer(pid) {
   if(pOther[pid]) pOther[pid].dead=true;
-  delete rtcDCs[pid]; delete rtcPeers[pid];
+  delete rtcDCs[pid];
   const n=Object.keys(rtcDCs).length;
   setConn(n>0?'g':'y', n>0?n+' CONNECTED':'PEER LEFT');
 }
@@ -1090,10 +1135,9 @@ function doHost() {
   document.getElementById('lCode').textContent='CONNECTING...';
   document.getElementById('btnDeploy').style.display='none';
   showScr('sLobby');
-  sigIdx=0;
-  openSig(()=>{
+  document.getElementById('lCode').textContent='LOADING...';
+  initPeerHost(id=>{
     document.getElementById('lCode').textContent=roomCode;
-    setConn('g','HOSTING — WAIT FOR PLAYERS');
   });
 }
 function doJoin() {
@@ -1103,12 +1147,14 @@ function doJoin() {
   roomCode=code; isHost=false; lobbyPeers={}; updLobby(myId,myName);
   document.getElementById('lCode').textContent=code;
   showScr('sLobby');
-  sigIdx=0;
-  openSig(()=>{ sigSend({type:'join',name:myName}); setConn('y','WAITING...'); });
+  setConn('y','CONNECTING...');
+  initPeerJoin(code, ()=>{
+    // Send hello once DataChannel opens (handled in setupDC)
+  });
 }
 function leaveLobby() {
-  if(sigWs)try{sigWs.close();}catch(_){}
-  sigWs=null; rtcPeers={}; rtcDCs={}; lobbyPeers={};
+  sigCleanup();
+  rtcDCs={}; lobbyPeers={};
   showScr('sMenu');
 }
 function hostDeploy() {
@@ -1276,8 +1322,8 @@ function stopGame() {
   GS='menu';
   if (animId){cancelAnimationFrame(animId);animId=null;}
   if (zoneTimer){clearInterval(zoneTimer);zoneTimer=null;}
-  if (sigWs)try{sigWs.close();}catch(_){}
-  sigWs=null; rtcPeers={}; rtcDCs={}; lobbyPeers={};
+  sigCleanup();
+  rtcDCs={}; lobbyPeers={};
   lp=null; pOther={}; enemies=[]; bullets=[]; loot=[]; grenades=[]; mines=[]; parts=[]; turrets=[];
   sessionLoot=0; sessionKills=0;
   ['hud','minimap','mm','connSt','joyL','joyR','wBar','actBtns','exTimer'].forEach(id=>{
