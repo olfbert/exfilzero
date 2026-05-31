@@ -102,12 +102,17 @@ input::placeholder{color:rgba(0,255,231,.3);}
 #popup{position:fixed;bottom:calc(218px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);
   background:var(--panel);border:1px solid var(--gold);color:var(--gold);
   padding:5px 14px;font-size:.72rem;z-index:22;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap;}
-#minimap{position:fixed;top:max(100px,calc(env(safe-area-inset-top,0px) + 82px));right:8px;border:1px solid rgba(0,255,231,.2);
-  background:rgba(0,10,15,.65);z-index:10;display:none;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);}
+#mm{position:fixed;
+  top:max(88px,calc(env(safe-area-inset-top,0px) + 68px));
+  left:8px;
+  border:1px solid rgba(0,255,231,.2);
+  background:rgba(0,10,15,.65);
+  z-index:10;display:none;
+  backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);}
 #exTimer{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
   font-size:1.4rem;color:var(--gold);text-shadow:0 0 18px var(--gold);
   z-index:30;display:none;text-align:center;pointer-events:none;}
-#kfeed{position:fixed;left:8px;top:max(100px,calc(env(safe-area-inset-top,0px) + 82px));z-index:20;pointer-events:none;}
+#kfeed{position:fixed;left:8px;top:max(230px,calc(env(safe-area-inset-top,0px) + 210px));z-index:20;pointer-events:none;}
 .kf{background:rgba(255,42,42,.13);border-left:2px solid var(--red);padding:2px 7px;font-size:.65rem;margin-bottom:2px;}
 #connSt{position:fixed;bottom:calc(148px + env(safe-area-inset-bottom,0px));right:9px;opacity:.7;
   font-size:.58rem;color:rgba(0,255,231,.4);z-index:20;display:none;}
@@ -192,7 +197,7 @@ input::placeholder{color:rgba(0,255,231,.3);}
     <button class="btn" onclick="doJoin()">CONNECT</button>
   </div>
   <div id="mStats" style="margin-top:.9rem;font-size:.65rem;color:rgba(0,255,231,.35);text-align:center;"></div>
-  <div style="position:absolute;bottom:10px;right:12px;font-size:.55rem;color:rgba(0,255,231,.2);letter-spacing:.1em;">v5.6</div>
+  <div style="position:absolute;bottom:10px;right:12px;font-size:.55rem;color:rgba(0,255,231,.2);letter-spacing:.1em;">v6.1</div>
 </div>
 
 <!-- SHOP -->
@@ -412,6 +417,7 @@ const UPGRADES = [
   {id:'radar',name:'RADAR',       desc:'Enemies on map',   icon:'📡', max:1, costs:[350]},
   {id:'gear', name:'STARTER GEAR',desc:'Start with SMG',   icon:'🎒', max:1, costs:[500]},
   {id:'ins',  name:'INSURANCE',   desc:'Keep 30% on death',icon:'💎', max:1, costs:[800]},
+  {id:'gren', name:'GRENADE RANGE',desc:'+25% range & radius',icon:'💣', max:4, costs:[120,200,320,500]},
 ];
 
 // ── IndexedDB ─────────────────────────────────────────
@@ -691,7 +697,7 @@ function spawnEnemies(sx,sy) {
 }
 
 // ── Loot ──────────────────────────────────────────────
-const ADDON_KEYS = ['laser','armor','grenade','mine','medkit','stim','xray','turret'];
+const ADDON_KEYS = ['laser','armor','grenade','mine','medkit','stim','xray'];
 function spawnLoot(sx,sy) {
   loot=[];
   // Guaranteed weapon drops
@@ -706,6 +712,10 @@ function spawnLoot(sx,sy) {
       loot.push({type:'wep',wkey:wk,col:WDEFS[wk].col,x,y,id:'w'+wk,done:false});
   }
   // Random items + addons
+  // 1 guaranteed turret drop
+  {let _x,_y,_t=0;
+   do{_x=(Math.floor(rnd()*(MW-4))+2)*T+T/2;_y=(Math.floor(rnd()*(MH-4))+2)*T+T/2;_t++;}while(isSolid(_x,_y)&&_t<20);
+   if(!isSolid(_x,_y))loot.push({type:'addon',akey:'turret',icon:'🗼',col:'#0fe',label:'AUTO TURRET',x:_x,y:_y,id:'turret_drop',done:false});}
   const pool=[
     {type:'ammo', col:'#fd0'},{type:'hp',col:'#0f8',val:40},
     {type:'$',col:'#a8f',val:5},{type:'$',col:'#fa0',val:15},
